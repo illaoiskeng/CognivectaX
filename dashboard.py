@@ -218,6 +218,7 @@ with c1:
         if intraday_dkk.empty:
             st.warning("Ingen intraday-data lige nu.")
         else:
+            eq_plot = equity_dkk.copy()
             # Porteføljeværdi (DKK) pr minut baseret på vægte
             intraday_port = intraday_dkk.reindex(columns=w.index).fillna(method="ffill").fillna(0.0) @ w
 
