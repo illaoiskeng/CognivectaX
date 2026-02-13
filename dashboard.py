@@ -57,7 +57,10 @@ with c2:
 
 # Sortable table
 st.subheader("Holdings")
+weights_display = weights.copy()
+weights_display["weight"] = (weights_display["weight"] * 100).round(2).astype(str) + " %"
+
 st.dataframe(
-    weights.sort_values("weight", ascending=False),
+    weights_display.sort_values("weight", ascending=False),
     use_container_width=True
 )
