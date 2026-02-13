@@ -7,6 +7,17 @@ from streamlit_autorefresh import st_autorefresh
 import time
 st.caption(f"Refresh: {time.strftime('%H:%M:%S')}")
 
+import time
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+
+st.set_page_config(layout="wide")
+
+count = st_autorefresh(interval=5000, key="pv_refresh")
+st.write("REFRESH COUNTER:", count)
+st.write("RUN TIME:", time.strftime("%H:%M:%S"))
+st.divider()
+
 @st.cache_data(ttl=86400)
 def get_full_names(tickers):
     names = {}
