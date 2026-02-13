@@ -4,6 +4,8 @@ import numpy as np
 import yfinance as yf
 import plotly.express as px
 from streamlit_autorefresh import st_autorefresh
+import time
+st.caption(f"Refresh: {time.strftime('%H:%M:%S')}")
 
 @st.cache_data(ttl=86400)
 def get_full_names(tickers):
