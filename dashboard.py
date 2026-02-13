@@ -41,7 +41,7 @@ except Exception:
     st.stop()
 
 tickers = weights["ticker"].tolist()
-benchmark_ticker = "QQQ"
+benchmark_tickers = ["QQQ", "ACWI"]
 
 # ---------------- FX: USD -> DKK (hourly) ----------------
 @st.cache_data(ttl=3600)
@@ -99,6 +99,8 @@ def compute_equity_dkk(prices_dkk: pd.DataFrame, weights_df: pd.DataFrame,
     return equity, w
 
 prices_usd = download_daily_prices_usd(tickers)
+benchmark_usd = download_daily_prices_usd(["QQQ", "ACWI"])
+benchmark_dkk = benchmark_usd * usd_to_dkk
 benchmark_usd = download_daily_prices_usd([benchmark_ticker])
 benchmark_dkk = benchmark_usd * usd_to_dkk
 if prices_usd.empty:
@@ -108,6 +110,11 @@ if prices_usd.empty:
 prices_dkk = prices_usd * usd_to_dkk
 
 equity_dkk, w = compute_equity_dkk(prices_dkk, weights, START_CAPITAL_DKK, INCEPTION_DATE)
+benchmark_ret = benchmark_dkk.pct_change().fillna(0)
+
+benchmark_equity = START_CAPITAL_DKK * (1 + benchmark_ret).cumprod()
+benchmark_equity = benchmark_equity / benchmark_equity.iloc[0] * START_CAPITAL_DKK
+benchmark_equity = benchmark_equity[benchmark_equity.index >= INCEPTION_DATE]
 benchmark_ret = benchmark_dkk.pct_change().fillna(0.0)
 benchmark_equity = START_CAPITAL_DKK * (1 + benchmark_ret).cumprod()
 benchmark_equity = benchmark_equity / benchmark_equity.iloc[0] * START_CAPITAL_DKK
@@ -251,16 +258,23 @@ with c1:
             eq_plot = eq_plot[eq_plot.index >= cutoff]
 
 eq_df = eq_plot.reset_index()
+bench_plot = benchmark_equity.reindex(eq_plot.index)
+
+eq_df["QQQ"] = bench_plot["QQQ"].values
+eq_df["ACWI"] = bench_plot["ACWI"].values
 eq_df.columns = ["Date", "CognivectaX"]
 
 benchmark_plot = benchmark_equity.reindex(eq_plot.index)
 
 eq_df["Benchmark"] = benchmark_plot.values
 
+bench_plot = benchmark_equity.reindex(eq_plot.index)
+eq_df["QQQ"] = bench_plot["QQQ"].values
+eq_df["ACWI"] = bench_plot["ACWI"].values
 fig = px.line(
     eq_df,
     x="Date",
-    y=["CognivectaX", "Benchmark"],
+    y=["CognivectaX", "QQQ", "ACWI"]
     title="Equity Curve (DKK)"
 )
 
