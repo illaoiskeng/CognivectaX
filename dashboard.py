@@ -37,7 +37,7 @@ weights["weight"] = weights["weight"].astype(float)
 tickers = weights["ticker"].tolist()
 
 # ---------------- FX ----------------
-@st.cache_data(ttl=3600)
+@st.cache_data
 def get_usd_to_dkk():
     fx = yf.download("DKK=X", period="5d", interval="1d", auto_adjust=True, progress=False)
     if fx.empty:
