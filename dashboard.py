@@ -108,6 +108,8 @@ col5.metric("6M", f"{calc_return(126)*100:.2f}%")
 col6.metric("Total", f"{(equity_dkk.iloc[-1]/equity_dkk.iloc[0]-1)*100:.2f}%")
 
 # ---------- Charts ----------
+pie_df = weights.copy()
+
 c1, c2 = st.columns([2, 1])
 
 with c1:
