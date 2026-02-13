@@ -30,7 +30,9 @@ equity = (1 + port_ret).cumprod()
 # Performance metrics
 st.subheader("Portfolio Performance")
 
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+col0, col1, col2, col3, col4, col5, col6 = st.columns(7)
+
+col0.metric("Portfolio Value", f"${equity.iloc[-1]:,.0f}")
 
 def calc_return(days):
     if len(equity) <= days:
