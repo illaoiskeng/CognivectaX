@@ -4,6 +4,17 @@ import numpy as np
 import yfinance as yf
 import plotly.express as px
 
+@st.cache_data(ttl=86400)
+def get_full_names(tickers):
+    names = {}
+    for t in tickers:
+        try:
+            info = yf.Ticker(t).get_info()
+            names[t] = info.get("shortName") or info.get("longName") or t
+        except:
+            names[t] = t
+    return names
+
 st.set_page_config(layout="wide")
 st.title("CognivectaX – Portfolio Dashboard")
 
@@ -110,6 +121,9 @@ col6.metric("Total", f"{(equity_dkk.iloc[-1]/equity_dkk.iloc[0]-1)*100:.2f}%")
 # ---------- Charts ----------
 pie_df = weights.copy()
 
+name_map = get_full_names(pie_df["ticker"].tolist())
+pie_df["full_name"] = pie_df["ticker"].map(name_map)
+
 c1, c2 = st.columns([2, 1])
 
 with c1:
@@ -128,11 +142,14 @@ with c2:
         title="Weight Allocation"
     )
 
+    # kun ticker på selve kagen
     fig2.update_traces(
         textinfo="label",
-        hovertemplate="<b>%{label}</b><br>Vægt: %{percent}<extra></extra>"
+        customdata=pie_df["full_name"],
+        hovertemplate="<b>%{label}</b><br>%{customdata}<br>Vægt: %{percent}<extra></extra>"
     )
 
+    # fjern farvelisten til højre
     fig2.update_layout(showlegend=False)
 
     st.plotly_chart(fig2, use_container_width=True)
