@@ -92,6 +92,32 @@ def download_prices(tickers, period, interval):
     close = close.dropna(how="all").sort_index()
     return close
 
+@st.cache_data(ttl=5)
+def download_live_last_prices_dkk(tickers, usd_to_dkk):
+    raw = yf.download(
+        tickers,
+        period="1d",
+        interval="1m",
+        auto_adjust=True,
+        progress=False,
+        threads=True,
+    )
+    if raw is None or raw.empty:
+        return pd.Series(dtype=float)
+
+    if isinstance(raw.columns, pd.MultiIndex):
+        close = raw["Close"].copy()
+    else:
+        close = pd.DataFrame({tickers[0]: raw["Close"]})
+
+    close = close.dropna(how="all")
+    if close.empty:
+        return pd.Series(dtype=float)
+
+    last_usd = close.iloc[-1]
+    last_dkk = last_usd * usd_to_dkk
+    return last_dkk
+
 prices = download_prices(tickers, "max", interval)
 prices = prices * usd_to_dkk
 if prices.empty:
