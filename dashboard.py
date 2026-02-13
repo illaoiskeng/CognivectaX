@@ -41,6 +41,7 @@ except Exception:
     st.stop()
 
 tickers = weights["ticker"].tolist()
+benchmark_ticker = "QQQ"
 
 # ---------------- FX: USD -> DKK (hourly) ----------------
 @st.cache_data(ttl=3600)
@@ -98,6 +99,8 @@ def compute_equity_dkk(prices_dkk: pd.DataFrame, weights_df: pd.DataFrame,
     return equity, w
 
 prices_usd = download_daily_prices_usd(tickers)
+benchmark_usd = download_daily_prices_usd([benchmark_ticker])
+benchmark_dkk = benchmark_usd * usd_to_dkk
 if prices_usd.empty:
     st.error("Ingen daily prisdata kunne hentes fra Yahoo.")
     st.stop()
@@ -105,6 +108,10 @@ if prices_usd.empty:
 prices_dkk = prices_usd * usd_to_dkk
 
 equity_dkk, w = compute_equity_dkk(prices_dkk, weights, START_CAPITAL_DKK, INCEPTION_DATE)
+benchmark_ret = benchmark_dkk.pct_change().fillna(0.0)
+benchmark_equity = START_CAPITAL_DKK * (1 + benchmark_ret).cumprod()
+benchmark_equity = benchmark_equity / benchmark_equity.iloc[0] * START_CAPITAL_DKK
+benchmark_equity = benchmark_equity[benchmark_equity.index >= INCEPTION_DATE]
 if equity_dkk is None or len(equity_dkk) == 0:
     st.warning("Ingen data endnu efter launch-dato.")
     st.stop()
@@ -245,7 +252,14 @@ with c1:
         eq_df = eq_plot.reset_index()
         eq_df.columns = ["Date", "CognivectaX"]
 
-        fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK)")
+        eq_df["Benchmark"] = benchmark_equity.reindex(eq_df["Date"]).values
+
+fig = px.line(
+    eq_df,
+    x="Date",
+    y=["CognivectaX", "Benchmark"],
+    title="Equity Curve (DKK)"
+)
         fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
         fig.update_yaxes(tickformat=",.0f", title="DKK")
         st.plotly_chart(fig, use_container_width=True)
