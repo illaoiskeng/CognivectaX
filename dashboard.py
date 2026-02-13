@@ -21,6 +21,8 @@ def get_full_names(tickers):
 st.set_page_config(layout="wide")
 st.title("CognivectaX – Portfolio Dashboard")
 st_autorefresh(interval=5000, key="pv_refresh")
+import time
+st.write("Last run:", time.strftime("%H:%M:%S"))
 
 DATA = "data/weights_latest.csv"
 
