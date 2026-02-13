@@ -87,6 +87,7 @@ def download_prices(tickers, period, interval):
     return close
 
 prices = download_prices(tickers, "max", interval)
+prices = prices * usd_to_dkk
 if prices.empty:
     st.error("Ingen prisdata (måske pga. Yahoo-begrænsning for intraday). Prøv større horisont/interval, fx 1d + max.")
     st.stop()
