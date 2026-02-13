@@ -27,7 +27,7 @@ START_CAPITAL_DKK = 100_000
 
 INCEPTION_DATE = "2026-01-01"
 
-interval = st.sidebar.selectbox("Interval (granularitet)", ["15m", "30m", "60m", "1d"], index=3)
+interval = "1d"
 # Yahoo-begrænsning: intraday har typisk begrænset historik
 period = st.sidebar.selectbox("Horisont", ["5d", "1mo", "3mo", "6mo", "1y", "5y", "max"], index=6)
 
