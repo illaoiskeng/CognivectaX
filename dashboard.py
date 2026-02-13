@@ -96,16 +96,16 @@ if equity_dkk.empty:
 
 # ---------------- Live Prices (for Portfolio Value only) ----------------
 @st.cache_data(ttl=5)
-def download_live_last_prices(tickers):
+def download_live_last_prices(tickers, usd_to_dkk):
     raw = yf.download(
         tickers,
         period="1d",
         interval="1m",
         auto_adjust=True,
         progress=False,
-        threads=True
+        threads=False
     )
-    if raw.empty:
+    if raw is None or raw.empty:
         return pd.Series(dtype=float)
 
     if isinstance(raw.columns, pd.MultiIndex):
@@ -119,7 +119,7 @@ def download_live_last_prices(tickers):
 
     return close.iloc[-1] * usd_to_dkk
 
-live_last = download_live_last_prices(tickers)
+live_last = download_live_last_prices(tickers, usd_to_dkk)
 
 last_daily = prices.iloc[-1]
 common = live_last.index.intersection(last_daily.index)
