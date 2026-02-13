@@ -101,7 +101,6 @@ port_ret = rets @ w
 equity_usd = START_CAPITAL_DKK / usd_to_dkk * (1 + port_ret).cumprod()
 equity_dkk = equity_usd * usd_to_dkk
 equity_dkk.name = "CognivectaX"
-equity_dkk = equity_dkk[equity_dkk.index >= INCEPTION_DATE]
 
 # ---------- Metrics ----------
 st.subheader("Portfolio Performance")
