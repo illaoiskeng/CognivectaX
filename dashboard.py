@@ -156,7 +156,7 @@ def calc_return(days: int) -> float:
     return float(equity_dkk.iloc[-1] / equity_dkk.iloc[-days] - 1.0)
 
 col0.metric("Portfolio Value (DKK)", f"{portfolio_value_live:,.0f} kr")
-st.caption(f"Live opdateret: {pd.Timestamp.now().strftime('%H:%M:%S')}")
+st.caption(f"Live opdateret: {pd.Timestamp.now(tz='Europe/Copenhagen').strftime('%H:%M:%S')}")
 col1.metric("1D", f"{calc_return(1)*100:.2f}%")
 col2.metric("1W", f"{calc_return(5)*100:.2f}%")
 col3.metric("1M", f"{calc_return(21)*100:.2f}%")
