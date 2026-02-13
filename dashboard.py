@@ -165,7 +165,14 @@ col6.metric("Since inception", f"{(float(equity_dkk.iloc[-1]) / START_CAPITAL_DK
 c1, c2 = st.columns([2, 1])
 
 with c1:
-    eq_df = equity_dkk.reset_index()
+    days_map = {"5d": 5, "1mo": 31, "3mo": 93, "6mo": 186, "1y": 366, "5y": 1826}
+eq_plot = equity_dkk
+
+if period != "max":
+    cutoff = eq_plot.index.max() - pd.Timedelta(days=days_map[period])
+    eq_plot = eq_plot[eq_plot.index >= cutoff]
+
+eq_df = eq_plot.reset_index()
     eq_df.columns = ["Date", "CognivectaX"]
     fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK)")
     fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
