@@ -66,7 +66,23 @@ def download_prices(tickers):
         close = pd.DataFrame({tickers[0]: raw["Close"]})
 
     return close.dropna(how="all")
+    
+@st.cache_data
+def compute_equity(prices, weights, start_capital, inception_date):
 
+    rets = prices.pct_change().fillna(0.0)
+
+    w = weights.set_index("ticker")["weight"].reindex(prices.columns).fillna(0.0)
+
+    port_ret = rets @ w
+    port_ret = port_ret[port_ret.index >= inception_date]
+
+    equity = start_capital * (1 + port_ret).cumprod()
+    equity = equity / equity.iloc[0] * start_capital
+    equity = equity[equity.index >= inception_date]
+
+    return equity, w
+    
 prices = download_prices(tickers) * usd_to_dkk
 if prices.empty:
     st.error("No price data.")
