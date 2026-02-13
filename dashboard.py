@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import plotly.express as px
+from streamlit_autorefresh import st_autorefresh
 
 @st.cache_data(ttl=86400)
 def get_full_names(tickers):
@@ -17,6 +18,9 @@ def get_full_names(tickers):
 
 st.set_page_config(layout="wide")
 st.title("CognivectaX – Portfolio Dashboard")
+st.set_page_config(layout="wide")
+st.title("CognivectaX – Portfolio Dashboard")
+st_autorefresh(interval=5000, key="pv_refresh")
 
 DATA = "data/weights_latest.csv"
 
