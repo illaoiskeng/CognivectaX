@@ -42,6 +42,17 @@ except Exception:
 
 tickers = weights["ticker"].tolist()
 benchmark_tickers = ["QQQ", "ACWI"]
+@st.cache_data(ttl=86400)
+def get_full_names(tickers: list[str]) -> dict:
+    names = {}
+    for t in tickers:
+        try:
+            info = yf.Ticker(t).get_info()
+            names[t] = info.get("shortName") or info.get("longName") or t
+        except Exception:
+            names[t] = t
+    return names
+
 
 # ---------------- FX: USD -> DKK (hourly) ----------------
 @st.cache_data(ttl=3600)
@@ -275,12 +286,54 @@ with c1:
         st.plotly_chart(fig, use_container_width=True)
 
 with c2:
+    # Clean weights så vi undgår 1e-14 osv. og renormaliserer
+    pie_df = weights.copy()
+    pie_df["weight"] = pd.to_numeric(pie_df["weight"], errors="coerce").fillna(0.0)
+    pie_df["weight"] = pie_df["weight"].clip(lower=0.0)
+    pie_df.loc[pie_df["weight"] < 1e-6, "weight"] = 0.0  # drop mikrovægte
+
+    s = float(pie_df["weight"].sum())
+    if s > 0:
+        pie_df["weight"] = pie_df["weight"] / s
+
+    # Full names til hover
+    name_map = get_full_names(pie_df["ticker"].tolist())
+    pie_df["full_name"] = pie_df["ticker"].map(name_map).fillna(pie_df["ticker"])
+
     fig2 = px.pie(
-        weights,
+        pie_df[pie_df["weight"] > 0],
         names="ticker",
         values="weight",
         title="Weight Allocation"
     )
+
+    # Ticker på slices + hover med fuldt navn + procent
+    fig2.update_traces(
+        textinfo="label",
+        customdata=pie_df.loc[pie_df["weight"] > 0, "full_name"],
+        hovertemplate="<b>%{label}</b><br>%{customdata}<br>Vægt: %{percent}<extra></extra>"
+    )
     fig2.update_layout(showlegend=False)
+
     st.plotly_chart(fig2, use_container_width=True)
-    st.caption(f"Run time: {time.time() - t0:.2f}s")
+
+st.subheader("Holdings")
+
+holdings = weights.copy()
+holdings["weight"] = pd.to_numeric(holdings["weight"], errors="coerce").fillna(0.0)
+holdings["weight"] = holdings["weight"].clip(lower=0.0)
+
+# samme cleanup som pie (så tabellen matcher)
+holdings.loc[holdings["weight"] < 1e-6, "weight"] = 0.0
+s = float(holdings["weight"].sum())
+if s > 0:
+    holdings["weight"] = holdings["weight"] / s
+
+name_map = get_full_names(holdings["ticker"].tolist())
+holdings["Name"] = holdings["ticker"].map(name_map).fillna(holdings["ticker"])
+holdings["Weight %"] = (holdings["weight"] * 100).round(2)
+
+holdings = holdings.loc[holdings["weight"] > 0, ["ticker", "Weight %", "Name"]].sort_values("Weight %", ascending=False)
+holdings = holdings.rename(columns={"ticker": "Ticker"})
+
+st.dataframe(holdings, use_container_width=True, hide_index=True)
