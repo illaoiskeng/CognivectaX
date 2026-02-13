@@ -121,12 +121,28 @@ with c1:
 with c2:
     pie_df = weights.copy()
     pie_df["weight_pct"] = pie_df["weight"] * 100
-    fig2 = px.pie(pie_df, names="ticker", values="weight", title="Weight Allocation")
-    fig2.update_traces(hovertemplate="%{label}<br>Vægt: %{value:.2%}<extra></extra>")
-    st.plotly_chart(fig2, use_container_width=True)
+    # Hent fulde firmanavne
+import yfinance as yf
+name_map = {}
+for t in pie_df["ticker"]:
+    try:
+        name_map[t] = yf.Ticker(t).info.get("shortName", t)
+    except:
+        name_map[t] = t
 
-# ---------- Holdings table ----------
-st.subheader("Holdings")
-weights_display = weights.copy()
-weights_display["weight"] = (weights_display["weight"] * 100).round(2).astype(str) + " %"
-st.dataframe(weights_display.sort_values("weight", ascending=False), use_container_width=True)
+pie_df["full_name"] = pie_df["ticker"].map(name_map)
+
+fig2 = px.pie(
+    pie_df,
+    names="ticker",          # vis ticker på selve kagen
+    values="weight",
+    title="Weight Allocation"
+)
+
+fig2.update_traces(
+    textinfo="label",        # KUN ticker (ikke 8%)
+    hovertemplate="<b>%{customdata}</b><br>Vægt: %{percent}",
+    customdata=pie_df["full_name"]
+)
+
+fig2.update_layout(showlegend=False)  # fjerner farve-listen til højre
