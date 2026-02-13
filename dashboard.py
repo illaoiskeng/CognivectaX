@@ -101,8 +101,6 @@ def compute_equity_dkk(prices_dkk: pd.DataFrame, weights_df: pd.DataFrame,
 prices_usd = download_daily_prices_usd(tickers)
 benchmark_usd = download_daily_prices_usd(["QQQ", "ACWI"])
 benchmark_dkk = benchmark_usd * usd_to_dkk
-benchmark_usd = download_daily_prices_usd([benchmark_ticker])
-benchmark_dkk = benchmark_usd * usd_to_dkk
 if prices_usd.empty:
     st.error("Ingen daily prisdata kunne hentes fra Yahoo.")
     st.stop()
