@@ -9,107 +9,118 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(layout="wide")
 st.title("CognivectaX – Portfolio Dashboard")
 
-# Auto refresh every 5 seconds
-st_autorefresh(interval=5000, key="main_refresh")
+# Refresh every 5 seconds (real-world cadence will be ~5s + runtime)
+st_autorefresh(interval=5000, key="cognivectax_refresh_5s")
 
 DATA = "data/weights_latest.csv"
 START_CAPITAL_DKK = 100_000
 INCEPTION_DATE = "2026-01-01"
-interval = "1d"
 
-# ---------------- Sidebar ----------------
 st.sidebar.header("Visning")
-period = st.sidebar.selectbox(
-    "Horisont",
-    ["5d", "1mo", "3mo", "6mo", "1y", "5y", "max"],
-    index=6,
-)
+st.sidebar.caption("Live value opdaterer ca hver 3–6 sek (afhænger af Yahoo-latency).")
 
-# ---------------- Load weights ----------------
+# ---------------- Load weights (cache hard) ----------------
+@st.cache_data(ttl=300)
+def load_weights(path: str) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["ticker"] = df["ticker"].astype(str).str.upper()
+    df["weight"] = df["weight"].astype(float)
+    return df
+
 try:
-    weights = pd.read_csv(DATA)
-except:
+    weights = load_weights(DATA)
+except Exception:
     st.warning("No weights file found. Run runner.py first.")
     st.stop()
 
-weights["ticker"] = weights["ticker"].astype(str).str.upper()
-weights["weight"] = weights["weight"].astype(float)
 tickers = weights["ticker"].tolist()
 
-# ---------------- FX ----------------
-@st.cache_data
-def get_usd_to_dkk():
+# ---------------- FX: USD -> DKK (hourly) ----------------
+@st.cache_data(ttl=3600)
+def get_usd_to_dkk() -> float:
     fx = yf.download("DKK=X", period="5d", interval="1d", auto_adjust=True, progress=False)
-    if fx.empty:
-        return 1.0
-    return float(fx["Close"].dropna().iloc[-1])
+    if fx is None or fx.empty:
+        return np.nan
+    if "Close" in fx.columns:
+        return float(fx["Close"].dropna().iloc[-1])
+    return float(fx.dropna().iloc[-1].values[-1])
 
 usd_to_dkk = get_usd_to_dkk()
+if np.isnan(usd_to_dkk):
+    st.warning("Kunne ikke hente USD/DKK (DKK=X). Viser værdier som 'USD≈DKK'.")
+    usd_to_dkk = 1.0
 
-# ---------------- Daily Prices (for equity curve) ----------------
-@st.cache_data(ttl=1800)
-def download_prices(tickers):
-   raw = yf.download(
-    tickers,
-    period=period,
-    interval="1d",
+# ---------------- DAILY layer (heavy) ----------------
+# We keep daily data cached strongly so reruns are fast.
+@st.cache_data(ttl=86400)  # 1 day cache; heavy call
+def download_daily_prices_usd(tickers: list[str]) -> pd.DataFrame:
+    raw = yf.download(
+        tickers,
+        period="max",
+        interval="1d",
         auto_adjust=True,
         progress=False,
-        threads=True
+        threads=True,
     )
-    if raw.empty:
+    if raw is None or raw.empty:
         return pd.DataFrame()
 
     if isinstance(raw.columns, pd.MultiIndex):
-        close = raw["Close"]
+        close = raw["Close"].copy()
     else:
         close = pd.DataFrame({tickers[0]: raw["Close"]})
 
-    return close.dropna(how="all")
-    
-@st.cache_data
-def compute_equity(prices, weights, start_capital, inception_date):
+    close = close.dropna(how="all").sort_index()
+    return close
 
-    rets = prices.pct_change().fillna(0.0)
+@st.cache_data(ttl=86400)  # 1 day cache; deterministic calc
+def compute_equity_dkk(prices_dkk: pd.DataFrame, weights_df: pd.DataFrame,
+                       start_capital: float, inception_date: str):
+    rets = prices_dkk.pct_change().fillna(0.0)
 
-    w = weights.set_index("ticker")["weight"].reindex(prices.columns).fillna(0.0)
+    w = weights_df.set_index("ticker")["weight"].reindex(prices_dkk.columns).fillna(0.0)
 
     port_ret = rets @ w
     port_ret = port_ret[port_ret.index >= inception_date]
 
     equity = start_capital * (1 + port_ret).cumprod()
-    equity = equity / equity.iloc[0] * start_capital
+    if len(equity) > 0:
+        equity = equity / float(equity.iloc[0]) * start_capital
+
     equity = equity[equity.index >= inception_date]
-
     return equity, w
-    
-prices = download_prices(tickers) * usd_to_dkk
-if prices.empty:
-    st.error("No price data.")
+
+prices_usd = download_daily_prices_usd(tickers)
+if prices_usd.empty:
+    st.error("Ingen daily prisdata kunne hentes fra Yahoo.")
     st.stop()
 
-equity_dkk, w = compute_equity(prices, weights, START_CAPITAL_DKK, INCEPTION_DATE)
+prices_dkk = prices_usd * usd_to_dkk
 
-if equity_dkk.empty:
-    st.warning("Ingen data endnu efter launch-dato")
+equity_dkk, w = compute_equity_dkk(prices_dkk, weights, START_CAPITAL_DKK, INCEPTION_DATE)
+if equity_dkk is None or len(equity_dkk) == 0:
+    st.warning("Ingen data endnu efter launch-dato.")
     st.stop()
 
-# ---------------- Live Prices (for Portfolio Value only) ----------------
+last_daily_close_dkk = prices_dkk.iloc[-1]
+
+# ---------------- LIVE layer (light, refreshed) ----------------
 @st.cache_data(ttl=5)
-def download_live_last_prices(tickers, usd_to_dkk):
+def download_live_last_prices_dkk(tickers: list[str], usd_to_dkk: float) -> pd.Series:
+    # threads=False is often faster/more stable on Streamlit Cloud
     raw = yf.download(
         tickers,
         period="1d",
         interval="1m",
         auto_adjust=True,
         progress=False,
-        threads=False
+        threads=False,
     )
     if raw is None or raw.empty:
         return pd.Series(dtype=float)
 
     if isinstance(raw.columns, pd.MultiIndex):
-        close = raw["Close"]
+        close = raw["Close"].copy()
     else:
         close = pd.DataFrame({tickers[0]: raw["Close"]})
 
@@ -119,27 +130,27 @@ def download_live_last_prices(tickers, usd_to_dkk):
 
     return close.iloc[-1] * usd_to_dkk
 
-live_last = download_live_last_prices(tickers, usd_to_dkk)
+live_last_dkk = download_live_last_prices_dkk(tickers, usd_to_dkk)
 
-last_daily = prices.iloc[-1]
-common = live_last.index.intersection(last_daily.index)
-
+# Live portfolio value = last equity * intraday multiplier (vs last daily close)
+common = live_last_dkk.index.intersection(last_daily_close_dkk.index)
 if len(common) > 0:
-    intraday_rets = (live_last[common] / last_daily[common] - 1).fillna(0.0)
-    live_multiplier = 1 + float(intraday_rets @ w.reindex(common).fillna(0.0))
+    intraday_rets = (live_last_dkk[common] / last_daily_close_dkk[common] - 1.0).fillna(0.0)
+    w_common = w.reindex(common).fillna(0.0)
+    live_multiplier = 1.0 + float(intraday_rets @ w_common)
     portfolio_value_live = float(equity_dkk.iloc[-1] * live_multiplier)
 else:
     portfolio_value_live = float(equity_dkk.iloc[-1])
 
-# ---------------- Metrics ----------------
+# ---------------- METRICS ----------------
 st.subheader("Portfolio Performance")
 
 col0, col1, col2, col3, col4, col5, col6 = st.columns(7)
 
-def calc_return(days):
+def calc_return(days: int) -> float:
     if len(equity_dkk) <= days:
         return np.nan
-    return equity_dkk.iloc[-1] / equity_dkk.iloc[-days] - 1
+    return float(equity_dkk.iloc[-1] / equity_dkk.iloc[-days] - 1.0)
 
 col0.metric("Portfolio Value (DKK)", f"{portfolio_value_live:,.0f} kr")
 col1.metric("1D", f"{calc_return(1)*100:.2f}%")
@@ -147,16 +158,17 @@ col2.metric("1W", f"{calc_return(5)*100:.2f}%")
 col3.metric("1M", f"{calc_return(21)*100:.2f}%")
 col4.metric("3M", f"{calc_return(63)*100:.2f}%")
 col5.metric("6M", f"{calc_return(126)*100:.2f}%")
-col6.metric("Since inception", f"{(equity_dkk.iloc[-1]/START_CAPITAL_DKK - 1)*100:.2f}%")
+col6.metric("Since inception", f"{(float(equity_dkk.iloc[-1]) / START_CAPITAL_DKK - 1)*100:.2f}%")
 
-# ---------------- Charts ----------------
+# ---------------- CHARTS ----------------
 c1, c2 = st.columns([2, 1])
 
 with c1:
     eq_df = equity_dkk.reset_index()
     eq_df.columns = ["Date", "CognivectaX"]
     fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK)")
-    fig.update_yaxes(tickformat=",.0f")
+    fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
+    fig.update_yaxes(tickformat=",.0f", title="DKK")
     st.plotly_chart(fig, use_container_width=True)
 
 with c2:
