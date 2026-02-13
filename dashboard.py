@@ -25,6 +25,8 @@ st.sidebar.header("Visning")
 
 START_CAPITAL_DKK = 100_000
 
+INCEPTION_DATE = "2026-02-15"
+
 interval = st.sidebar.selectbox("Interval (granularitet)", ["15m", "30m", "60m", "1d"], index=3)
 # Yahoo-begrænsning: intraday har typisk begrænset historik
 period = st.sidebar.selectbox("Horisont", ["5d", "1mo", "3mo", "6mo", "1y", "5y", "max"], index=6)
@@ -99,6 +101,7 @@ port_ret = rets @ w
 equity_usd = START_CAPITAL_DKK / usd_to_dkk * (1 + port_ret).cumprod()
 equity_dkk = equity_usd * usd_to_dkk
 equity_dkk.name = "CognivectaX"
+equity_dkk = equity_dkk[equity_dkk.index >= INCEPTION_DATE]
 
 # ---------- Metrics ----------
 st.subheader("Portfolio Performance")
