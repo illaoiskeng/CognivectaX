@@ -1,65 +1,57 @@
-import streamlit as st
-import pandas as pd
+import os
+import math
 import numpy as np
+import pandas as pd
 import yfinance as yf
-import plotly.express as px
+from scipy.optimize import minimize
 
-st.set_page_config(layout="wide")
-st.title("CognivectaX – Portfolio Dashboard")
+TICKERS = [
+    "AAPL","MSFT","GOOGL","AMZN","META",
+    "NVDA","AMD","INTC","AVGO","QCOM","TXN","ADI","MU",
+    "TSM","ASML","AMAT","LRCX","KLAC"
+]
 
-DATA = "data/weights_latest.csv"
+LOOKBACK = 252
+MAX_WEIGHT = 0.08
+START = "2015-01-01"
 
-if not st.session_state.get("loaded"):
-    st.session_state.loaded = True
+def max_sharpe(mu, cov, max_w):
+    n = len(mu)
+    w0 = np.ones(n)/n
 
-if not st.session_state.get("weights"):
+    def neg_sharpe(w):
+        ret = w @ mu
+        vol = math.sqrt(w @ cov @ w)
+        return -(ret/vol)
 
-    try:
-        weights = pd.read_csv(DATA)
-    except:
-        st.warning("No weights file found. Run runner.py first.")
-        st.stop()
+    bounds = [(0, max_w)] * n
+    cons = {"type":"eq","fun":lambda w: w.sum()-1}
 
-    st.session_state.weights = weights
+    res = minimize(neg_sharpe, w0, bounds=bounds, constraints=cons)
+    w = res.x
+    w = np.clip(w, 0, max_w)
+    return w / w.sum()
 
-weights = st.session_state.weights
+def main():
+    os.makedirs("data", exist_ok=True)
 
-tickers = weights["ticker"].tolist()
+    px = yf.download(TICKERS, start=START, auto_adjust=True, progress=False)["Close"]
+    rets = px.pct_change().dropna()
+    window = rets.iloc[-LOOKBACK:]
 
-prices = yf.download(tickers, start="2020-01-01", auto_adjust=True, progress=False)["Close"]
-rets = prices.pct_change().dropna()
+    mu = window.mean()*252
+    cov = window.cov()*252
 
-w = weights.set_index("ticker")["weight"]
-port_ret = rets @ w
-equity = (1+port_ret).cumprod()
+    w = max_sharpe(mu.values, cov.values, MAX_WEIGHT)
 
-# Metrics
-st.subheader("Portfolio Performance")
+    df = pd.DataFrame({
+        "ticker": px.columns,
+        "weight": w
+    }).sort_values("weight", ascending=False)
 
-col1,col2,col3,col4,col5,col6 = st.columns(6)
+    df.to_csv("data/weights_latest.csv", index=False)
 
-def ret(n):
-    if len(equity) <= n:
-        return np.nan
-    return equity.iloc[-1]/equity.iloc[-n]-1
+    print("✅ weights_latest.csv created")
 
-col1.metric("1D", f"{ret(1)*100:.2f}%")
-col2.metric("1W", f"{ret(5)*100:.2f}%")
-col3.metric("1M", f"{ret(21)*100:.2f}%")
-col4.metric("3M", f"{ret(63)*100:.2f}%")
-col5.metric("6M", f"{ret(126)*100:.2f}%")
-col6.metric("Total", f"{(equity.iloc[-1]-1)*100:.2f}%")
-
-# Charts
-c1,c2 = st.columns([2,1])
-
-with c1:
-    st.plotly_chart(px.line(equity, title="Equity Curve"), use_container_width=True)
-
-with c2:
-    st.plotly_chart(px.pie(weights, names="ticker", values="weight", title="Weight Allocation"),
-                    use_container_width=True)
-
-# Sortable table
-st.subheader("Holdings")
-st.dataframe(weights.sort_values("weight", ascending=False), use_container_width=True)
+if __name__ == "__main__":
+    main()
