@@ -23,6 +23,7 @@ view = st.sidebar.selectbox(
     "Graf-interval",
     ["15 min", "1 time", "12 timer", "1 dag", "1 uge", "1 måned", "3 måneder", "6 måneder", "12 måneder", "3 år", "5 år", "Historisk"],
     index=3
+)    
 st.sidebar.caption("Horisont påvirker kun grafen.")
 
 # ---------------- Load weights (cache hard) ----------------
