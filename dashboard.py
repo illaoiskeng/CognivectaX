@@ -274,7 +274,7 @@ eq_df["ACWI"] = bench_plot["ACWI"].values
 fig = px.line(
     eq_df,
     x="Date",
-    y=["CognivectaX", "QQQ", "ACWI"]
+    y=["CognivectaX", "QQQ", "ACWI"],
     title="Equity Curve (DKK)"
 )
 
