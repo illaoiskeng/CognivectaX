@@ -49,10 +49,10 @@ usd_to_dkk = get_usd_to_dkk()
 # ---------------- Daily Prices (for equity curve) ----------------
 @st.cache_data(ttl=1800)
 def download_prices(tickers):
-    raw = yf.download(
-        tickers,
-        period="max",
-        interval="1d",
+   raw = yf.download(
+    tickers,
+    period=period,
+    interval="1d",
         auto_adjust=True,
         progress=False,
         threads=True
