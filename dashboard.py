@@ -11,6 +11,8 @@ st.title("CognivectaX – Portfolio Dashboard")
 
 # Refresh every 5 seconds (real-world cadence will be ~5s + runtime)
 st_autorefresh(interval=5000, key="cognivectax_refresh_5s")
+import time
+t0 = time.time()
 
 DATA = "data/weights_latest.csv"
 START_CAPITAL_DKK = 100_000
@@ -190,3 +192,4 @@ with c2:
     )
     fig2.update_layout(showlegend=False)
     st.plotly_chart(fig2, use_container_width=True)
+    st.caption(f"Run time: {time.time() - t0:.2f}s")
