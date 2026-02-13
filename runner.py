@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from scipy.optimize import minimize
-import streamlit as st
-from streamlit_autorefresh import st_autorefresh
+
 
 TICKERS = [
     "AAPL","MSFT","GOOGL","AMZN","META",
