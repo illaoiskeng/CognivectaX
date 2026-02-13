@@ -19,7 +19,10 @@ START_CAPITAL_DKK = 100_000
 INCEPTION_DATE = "2026-01-01"
 
 st.sidebar.header("Visning")
-period = st.sidebar.selectbox("Horisont", ["5d", "1mo", "3mo", "6mo", "1y", "5y", "max"], index=6)
+view = st.sidebar.selectbox(
+    "Graf-interval",
+    ["15 min", "1 time", "12 timer", "1 dag", "1 uge", "1 måned", "3 måneder", "6 måneder", "12 måneder", "3 år", "5 år", "Historisk"],
+    index=3
 st.sidebar.caption("Horisont påvirker kun grafen.")
 
 # ---------------- Load weights (cache hard) ----------------
@@ -133,6 +136,27 @@ def download_live_last_prices_dkk(tickers: list[str], usd_to_dkk: float) -> pd.S
 
     return close.iloc[-1] * usd_to_dkk
 
+@st.cache_data(ttl=5)
+def download_intraday_close_dkk(tickers, usd_to_dkk):
+    raw = yf.download(
+        tickers,
+        period="1d",
+        interval="1m",
+        auto_adjust=True,
+        progress=False,
+        threads=False
+    )
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+
+    if isinstance(raw.columns, pd.MultiIndex):
+        close = raw["Close"]
+    else:
+        close = pd.DataFrame({tickers[0]: raw["Close"]})
+
+    close = close.dropna(how="all").sort_index()
+    return close * usd_to_dkk
+
 live_last_dkk = download_live_last_prices_dkk(tickers, usd_to_dkk)
 
 # Live portfolio value = last equity * intraday multiplier (vs last daily close)
@@ -168,21 +192,62 @@ col6.metric("Since inception", f"{(float(equity_dkk.iloc[-1]) / START_CAPITAL_DK
 c1, c2 = st.columns([2, 1])
 
 with c1:
-    days_map = {"5d": 5, "1mo": 31, "3mo": 93, "6mo": 186, "1y": 366, "5y": 1826}
-    eq_plot = equity_dkk
+    # Mapping til hvor meget vi viser på grafen
+    days_map = {
+        "1 uge": 7,
+        "1 måned": 31,
+        "3 måneder": 93,
+        "6 måneder": 186,
+        "12 måneder": 366,
+        "3 år": 1096,
+        "5 år": 1826,
+    }
 
-    if period != "max":
-        cutoff = eq_plot.index.max() - pd.Timedelta(days=days_map[period])
-        eq_plot = eq_plot[eq_plot.index >= cutoff]
+    # --- KORTE intervaller: intraday (opdaterer ~som value) ---
+    if view in ["15 min", "1 time", "12 timer", "1 dag"]:
+        intraday_dkk = download_intraday_close_dkk(tickers, usd_to_dkk)
 
-    eq_df = eq_plot.reset_index()
-    eq_df.columns = ["Date", "CognivectaX"]
+        if intraday_dkk.empty:
+            st.warning("Ingen intraday-data lige nu.")
+        else:
+            # Porteføljeværdi (DKK) pr minut baseret på vægte
+            intraday_port = intraday_dkk.reindex(columns=w.index).fillna(method="ffill").fillna(0.0) @ w
 
-    fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK)")
-    fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
-    fig.update_yaxes(tickformat=",.0f", title="DKK")
+            # Skær til valgt interval
+            if view == "15 min":
+                cutoff = intraday_port.index.max() - pd.Timedelta(minutes=15)
+            elif view == "1 time":
+                cutoff = intraday_port.index.max() - pd.Timedelta(hours=1)
+            elif view == "12 timer":
+                cutoff = intraday_port.index.max() - pd.Timedelta(hours=12)
+            else:  # "1 dag"
+                cutoff = intraday_port.index.max() - pd.Timedelta(days=1)
 
-    st.plotly_chart(fig, use_container_width=True)
+            intraday_port = intraday_port[intraday_port.index >= cutoff]
+
+            eq_df = intraday_port.reset_index()
+            eq_df.columns = ["Date", "CognivectaX"]
+
+            fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK) – Live")
+            fig.update_traces(hovertemplate="Tid: %{x}<br>Værdi: %{y:,.0f} kr")
+            fig.update_yaxes(tickformat=",.0f", title="DKK")
+            st.plotly_chart(fig, use_container_width=True)
+
+    # --- LANGE intervaller: daily equity (din eksisterende) ---
+    else:
+        eq_plot = equity_dkk
+
+        if view != "Historisk":
+            cutoff = eq_plot.index.max() - pd.Timedelta(days=days_map[view])
+            eq_plot = eq_plot[eq_plot.index >= cutoff]
+
+        eq_df = eq_plot.reset_index()
+        eq_df.columns = ["Date", "CognivectaX"]
+
+        fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK)")
+        fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
+        fig.update_yaxes(tickformat=",.0f", title="DKK")
+        st.plotly_chart(fig, use_container_width=True)
 
 with c2:
     fig2 = px.pie(
