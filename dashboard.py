@@ -249,10 +249,12 @@ with c1:
             cutoff = eq_plot.index.max() - pd.Timedelta(days=days_map[view])
             eq_plot = eq_plot[eq_plot.index >= cutoff]
 
-        eq_df = eq_plot.reset_index()
-        eq_df.columns = ["Date", "CognivectaX"]
+eq_df = eq_plot.reset_index()
+eq_df.columns = ["Date", "CognivectaX"]
 
-        eq_df["Benchmark"] = benchmark_equity.reindex(eq_df["Date"]).values
+benchmark_plot = benchmark_equity.reindex(eq_plot.index)
+
+eq_df["Benchmark"] = benchmark_plot.values
 
 fig = px.line(
     eq_df,
@@ -260,9 +262,11 @@ fig = px.line(
     y=["CognivectaX", "Benchmark"],
     title="Equity Curve (DKK)"
 )
-        fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
-        fig.update_yaxes(tickformat=",.0f", title="DKK")
-        st.plotly_chart(fig, use_container_width=True)
+
+fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
+fig.update_yaxes(tickformat=",.0f", title="DKK")
+
+st.plotly_chart(fig, use_container_width=True)
 
 with c2:
     fig2 = px.pie(
