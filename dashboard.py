@@ -101,6 +101,9 @@ port_ret = rets @ w
 equity_usd = START_CAPITAL_DKK / usd_to_dkk * (1 + port_ret).cumprod()
 equity_dkk = equity_usd * usd_to_dkk
 equity_dkk = equity_dkk[equity_dkk.index >= INCEPTION_DATE]
+if equity_dkk.empty:
+    st.warning("Ingen data endnu efter launch-dato")
+    st.stop()
 equity_dkk.name = "CognivectaX"
 
 # ---------- Metrics ----------
