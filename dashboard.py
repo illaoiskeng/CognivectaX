@@ -108,11 +108,6 @@ if prices_usd.empty:
 prices_dkk = prices_usd * usd_to_dkk
 
 equity_dkk, w = compute_equity_dkk(prices_dkk, weights, START_CAPITAL_DKK, INCEPTION_DATE)
-benchmark_ret = benchmark_dkk.pct_change().fillna(0)
-
-benchmark_equity = START_CAPITAL_DKK * (1 + benchmark_ret).cumprod()
-benchmark_equity = benchmark_equity / benchmark_equity.iloc[0] * START_CAPITAL_DKK
-benchmark_equity = benchmark_equity[benchmark_equity.index >= INCEPTION_DATE]
 benchmark_ret = benchmark_dkk.pct_change().fillna(0.0)
 benchmark_equity = START_CAPITAL_DKK * (1 + benchmark_ret).cumprod()
 benchmark_equity = benchmark_equity / benchmark_equity.iloc[0] * START_CAPITAL_DKK
@@ -205,7 +200,6 @@ col6.metric("Since inception", f"{(float(equity_dkk.iloc[-1]) / START_CAPITAL_DK
 c1, c2 = st.columns([2, 1])
 
 with c1:
-    # Mapping til hvor meget vi viser på grafen
     days_map = {
         "1 uge": 7,
         "1 måned": 31,
@@ -216,30 +210,38 @@ with c1:
         "5 år": 1826,
     }
 
-    # --- KORTE intervaller: intraday (opdaterer ~som value) ---
+    # --- KORTE intervaller: intraday (matcher Portfolio Value-logik) ---
     if view in ["15 min", "1 time", "12 timer", "1 dag"]:
         intraday_dkk = download_intraday_close_dkk(tickers, usd_to_dkk)
 
         if intraday_dkk.empty:
             st.warning("Ingen intraday-data lige nu.")
         else:
-            eq_plot = equity_dkk.copy()
-            # Porteføljeværdi (DKK) pr minut baseret på vægte
-            intraday_port = intraday_dkk.reindex(columns=w.index).fillna(method="ffill").fillna(0.0) @ w
+            # 1) beregn intraday multiplier vs sidste daily close (samme metode som portfolio_value_live)
+            common_cols = intraday_dkk.columns.intersection(last_daily_close_dkk.index)
+            intraday_dkk = intraday_dkk[common_cols].ffill()
 
-            # Skær til valgt interval
+            base = last_daily_close_dkk[common_cols]
+            r_t = intraday_dkk.div(base, axis=1) - 1.0  # returns vs last daily close
+
+            w_common = w.reindex(common_cols).fillna(0.0)
+            multiplier = 1.0 + (r_t @ w_common)  # serie pr minut
+
+            intraday_equity = equity_dkk.iloc[-1] * multiplier  # DKK NAV pr minut
+
+            # 2) skær til valgt interval
             if view == "15 min":
-                cutoff = intraday_port.index.max() - pd.Timedelta(minutes=15)
+                cutoff = intraday_equity.index.max() - pd.Timedelta(minutes=15)
             elif view == "1 time":
-                cutoff = intraday_port.index.max() - pd.Timedelta(hours=1)
+                cutoff = intraday_equity.index.max() - pd.Timedelta(hours=1)
             elif view == "12 timer":
-                cutoff = intraday_port.index.max() - pd.Timedelta(hours=12)
+                cutoff = intraday_equity.index.max() - pd.Timedelta(hours=12)
             else:  # "1 dag"
-                cutoff = intraday_port.index.max() - pd.Timedelta(days=1)
+                cutoff = intraday_equity.index.max() - pd.Timedelta(days=1)
 
-            intraday_port = intraday_port[intraday_port.index >= cutoff]
+            intraday_equity = intraday_equity[intraday_equity.index >= cutoff]
 
-            eq_df = intraday_port.reset_index()
+            eq_df = intraday_equity.reset_index()
             eq_df.columns = ["Date", "CognivectaX"]
 
             fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK) – Live")
@@ -247,39 +249,30 @@ with c1:
             fig.update_yaxes(tickformat=",.0f", title="DKK")
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- LANGE intervaller: daily equity (din eksisterende) ---
+    # --- LANGE intervaller: daily equity + benchmarks i samme graf ---
     else:
-        eq_plot = equity_dkk
+        eq_plot = equity_dkk.copy()
 
         if view != "Historisk":
             cutoff = eq_plot.index.max() - pd.Timedelta(days=days_map[view])
             eq_plot = eq_plot[eq_plot.index >= cutoff]
 
-eq_df = eq_plot.reset_index()
-bench_plot = benchmark_equity.reindex(eq_plot.index)
+        eq_df = eq_plot.to_frame("CognivectaX").reset_index()
+        eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
 
-eq_df["QQQ"] = bench_plot["QQQ"].values
-eq_df["ACWI"] = bench_plot["ACWI"].values
-eq_df.columns = ["Date", "CognivectaX"]
+        bench_plot = benchmark_equity.reindex(eq_plot.index)
+        eq_df["QQQ"] = bench_plot["QQQ"].values
+        eq_df["ACWI"] = bench_plot["ACWI"].values
 
-benchmark_plot = benchmark_equity.reindex(eq_plot.index)
-
-eq_df["Benchmark"] = benchmark_plot.values
-
-bench_plot = benchmark_equity.reindex(eq_plot.index)
-eq_df["QQQ"] = bench_plot["QQQ"].values
-eq_df["ACWI"] = bench_plot["ACWI"].values
-fig = px.line(
-    eq_df,
-    x="Date",
-    y=["CognivectaX", "QQQ", "ACWI"],
-    title="Equity Curve (DKK)"
-)
-
-fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
-fig.update_yaxes(tickformat=",.0f", title="DKK")
-
-st.plotly_chart(fig, use_container_width=True)
+        fig = px.line(
+            eq_df,
+            x="Date",
+            y=["CognivectaX", "QQQ", "ACWI"],
+            title="Equity Curve (DKK)"
+        )
+        fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
+        fig.update_yaxes(tickformat=",.0f", title="DKK")
+        st.plotly_chart(fig, use_container_width=True)
 
 with c2:
     fig2 = px.pie(
