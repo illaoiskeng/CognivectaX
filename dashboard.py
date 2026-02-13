@@ -98,8 +98,7 @@ w = weights.set_index("ticker")["weight"].reindex(prices.columns).fillna(0.0)
 
 # Portfolio returns + equity (i DKK)
 port_ret = rets @ w
-equity_usd = START_CAPITAL_DKK / usd_to_dkk * (1 + port_ret).cumprod()
-equity_dkk = equity_usd * usd_to_dkk
+equity_dkk = START_CAPITAL_DKK * (1 + port_ret).cumprod()
 equity_dkk = equity_dkk[equity_dkk.index >= INCEPTION_DATE]
 if equity_dkk.empty:
     st.warning("Ingen data endnu efter launch-dato")
