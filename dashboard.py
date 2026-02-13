@@ -124,7 +124,7 @@ col2.metric("1W", f"{calc_return(5)*100:.2f}%")
 col3.metric("1M", f"{calc_return(21)*100:.2f}%")
 col4.metric("3M", f"{calc_return(63)*100:.2f}%")
 col5.metric("6M", f"{calc_return(126)*100:.2f}%")
-col6.metric("Total", f"{(equity_dkk.iloc[-1]/equity_dkk.iloc[0]-1)*100:.2f}%")
+col6.metric("Since inception", f"{(equity_dkk.iloc[-1]/START_CAPITAL_DKK - 1)*100:.2f}%")
 
 # ---------- Charts ----------
 pie_df = weights.copy()
