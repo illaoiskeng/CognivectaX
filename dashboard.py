@@ -41,7 +41,7 @@ except Exception:
     st.stop()
 
 tickers = weights["ticker"].tolist()
-benchmark_tickers = ["QQQ", "ACWI"]
+
 @st.cache_data(ttl=86400)
 def get_full_names(tickers: list[str]) -> dict:
     names = {}
@@ -110,8 +110,6 @@ def compute_equity_dkk(prices_dkk: pd.DataFrame, weights_df: pd.DataFrame,
     return equity, w
 
 prices_usd = download_daily_prices_usd(tickers)
-benchmark_usd = download_daily_prices_usd(["QQQ", "ACWI"])
-benchmark_dkk = benchmark_usd * usd_to_dkk
 if prices_usd.empty:
     st.error("Ingen daily prisdata kunne hentes fra Yahoo.")
     st.stop()
@@ -119,10 +117,6 @@ if prices_usd.empty:
 prices_dkk = prices_usd * usd_to_dkk
 
 equity_dkk, w = compute_equity_dkk(prices_dkk, weights, START_CAPITAL_DKK, INCEPTION_DATE)
-benchmark_ret = benchmark_dkk.pct_change().fillna(0.0)
-benchmark_equity = START_CAPITAL_DKK * (1 + benchmark_ret).cumprod()
-benchmark_equity = benchmark_equity / benchmark_equity.iloc[0] * START_CAPITAL_DKK
-benchmark_equity = benchmark_equity[benchmark_equity.index >= INCEPTION_DATE]
 if equity_dkk is None or len(equity_dkk) == 0:
     st.warning("Ingen data endnu efter launch-dato.")
     st.stop()
@@ -271,14 +265,10 @@ with c1:
         eq_df = eq_plot.to_frame("CognivectaX").reset_index()
         eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
 
-        bench_plot = benchmark_equity.reindex(eq_plot.index)
-        eq_df["QQQ"] = bench_plot["QQQ"].values
-        eq_df["ACWI"] = bench_plot["ACWI"].values
-
         fig = px.line(
             eq_df,
             x="Date",
-            y=["CognivectaX", "QQQ", "ACWI"],
+            y=["CognivectaX"],
             title="Equity Curve (DKK)"
         )
         fig.update_traces(hovertemplate="Dato: %{x}<br>Værdi: %{y:,.0f} kr")
