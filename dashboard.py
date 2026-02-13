@@ -23,7 +23,7 @@ DATA = "data/weights_latest.csv"
 # ---------- Sidebar controls ----------
 st.sidebar.header("Visning")
 
-START_CAPITAL_DKK = 1_000_000
+START_CAPITAL_DKK = 100_000
 
 interval = st.sidebar.selectbox("Interval (granularitet)", ["15m", "30m", "60m", "1d"], index=3)
 # Yahoo-begrænsning: intraday har typisk begrænset historik
