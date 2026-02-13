@@ -86,7 +86,7 @@ def download_prices(tickers, period, interval):
     close = close.dropna(how="all").sort_index()
     return close
 
-prices = download_prices(tickers, period, interval)
+prices = download_prices(tickers, "max", interval)
 if prices.empty:
     st.error("Ingen prisdata (måske pga. Yahoo-begrænsning for intraday). Prøv større horisont/interval, fx 1d + max.")
     st.stop()
