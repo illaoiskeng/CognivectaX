@@ -23,7 +23,7 @@ DATA = "data/weights_latest.csv"
 # ---------- Sidebar controls ----------
 st.sidebar.header("Visning")
 
-START_CAPITAL_DKK = st.sidebar.number_input("Startkapital (DKK)", min_value=1000, value=100_000, step=10_000)
+START_CAPITAL_DKK = 1_000_000
 
 interval = st.sidebar.selectbox("Interval (granularitet)", ["15m", "30m", "60m", "1d"], index=3)
 # Yahoo-begrænsning: intraday har typisk begrænset historik
@@ -96,7 +96,7 @@ w = weights.set_index("ticker")["weight"].reindex(prices.columns).fillna(0.0)
 
 # Portfolio returns + equity (i DKK)
 port_ret = rets @ w
-equity_usd = START_CAPITAL_DKK / usd_to_dkk * (1 + port_ret).cumprod()  # bygges i USD så vi kan konvertere
+equity_usd = START_CAPITAL_DKK / usd_to_dkk * (1 + port_ret).cumprod()
 equity_dkk = equity_usd * usd_to_dkk
 equity_dkk.name = "CognivectaX"
 
