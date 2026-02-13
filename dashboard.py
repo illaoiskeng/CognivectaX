@@ -17,7 +17,8 @@ START_CAPITAL_DKK = 100_000
 INCEPTION_DATE = "2026-01-01"
 
 st.sidebar.header("Visning")
-st.sidebar.caption("Live value opdaterer ca hver 3–6 sek (afhænger af Yahoo-latency).")
+period = st.sidebar.selectbox("Horisont", ["5d", "1mo", "3mo", "6mo", "1y", "5y", "max"], index=6)
+st.sidebar.caption("Horisont påvirker kun grafen.")
 
 # ---------------- Load weights (cache hard) ----------------
 @st.cache_data(ttl=300)
