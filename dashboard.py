@@ -304,6 +304,9 @@ with c2:
     pie_df = w_live.reset_index()
     pie_df.columns = ["ticker", "weight"]
 
+    name_map = get_full_names(pie_df["ticker"].tolist())
+pie_df["full_name"] = pie_df["ticker"].map(name_map).fillna(pie_df["ticker"])
+
     fig2 = px.pie(
         pie_df[pie_df["weight"] > 0],
         names="ticker",
