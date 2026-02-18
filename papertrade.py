@@ -238,13 +238,6 @@ def main():
     w_opt = max_sharpe_weights(mu_ann, cov_ann, max_w=0.08)
 
     w_series = pd.Series(w_opt, index=rets_window.columns).sort_values(ascending=False)
-print("\n--- OPT TEST ---")
-print("Rebalance date:", first_reb.date())
-print("Using data up to:", t_minus_1.date())
-print("Sum weights:", float(w_series.sum()))
-print("Max weight:", float(w_series.max()))
-print("Top 10 weights:\n", w_series.head(10))
-
 print(f"Universe tickers: {len(tickers)}")
 print(f"Price rows: {len(closes_dkk)}")
 print(f"Rebalance dates: {len(rebalance_dates)}")
