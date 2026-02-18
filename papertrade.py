@@ -238,10 +238,7 @@ def main():
     w_opt = max_sharpe_weights(mu_ann, cov_ann, max_w=0.08)
 
     w_series = pd.Series(w_opt, index=rets_window.columns).sort_values(ascending=False)
-print(f"Universe tickers: {len(tickers)}")
-print(f"Price rows: {len(closes_dkk)}")
-print(f"Rebalance dates: {len(rebalance_dates)}")
-print("First 5 rebalance dates:", list(rebalance_dates[:5].date))
+
 
 if __name__ == "__main__":
     main()
