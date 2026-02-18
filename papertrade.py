@@ -170,24 +170,25 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame) -> tuple[pd.Series, pd.
     """
     Monthly rebalance at month-end decision time t:
       - signals from t-LOOKBACK..t-1 (returns)
-      - apply weights starting t+1 (next trading day)  [conservative + avoids close-auction assumptions]
+      - apply weights starting t+1 (next trading day)
       - turnover cost applied on first day weights go live
-    Outputs:
-      - equity curve series indexed by date
-      - weights history dataframe [date, ticker, target_weight] at rebalance decision dates
+    Equity curve starts at INCEPTION_DATE, but signals use full history.
     """
 
     closes_dkk = closes_dkk.sort_index()
-    closes_dkk = closes_dkk.loc[closes_dkk.index >= pd.Timestamp(INCEPTION_DATE)].copy()
 
-    # returns (keep NaNs; we will manage membership per rebalance)
+    start_dt = pd.Timestamp(INCEPTION_DATE)
+
+    # returns for full history (keep NaNs; dynamic membership per rebalance)
     rets = closes_dkk.pct_change(fill_method=None)
-
     all_dates = rets.index
-    if len(all_dates) < LOOKBACK + 5:
-        raise RuntimeError("Not enough data after inception to run papertrade.")
+
+    # Need enough history BEFORE inception to compute the first weights
+    if all_dates.get_indexer([start_dt], method="bfill")[0] < LOOKBACK + 2:
+        raise RuntimeError("Not enough history BEFORE inception to compute lookback window.")
 
     reb_dates = last_trading_day_each_month(all_dates)
+    reb_set = set(reb_dates)
 
     equity = START_CAPITAL_DKK
     eq_series = []
@@ -205,6 +206,8 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame) -> tuple[pd.Series, pd.
     min_obs = max(60, int(0.7 * LOOKBACK))
     fee = COST_BPS / 10000.0
 
+    started = False  # start tracking equity only after inception
+
     for dt in all_dates:
         # Apply pending weights at start of day
         if pending_w is not None:
@@ -213,20 +216,18 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame) -> tuple[pd.Series, pd.
             pending_w = None
             pending_cols = None
 
-            # apply trading cost on the first day new weights are active
             equity *= (1.0 - pending_cost)
             pending_cost = 0.0
 
         # Rebalance decision at month-end dt (based on data through dt-1)
-        if dt in set(reb_dates):
+        if dt in reb_set:
             loc = all_dates.get_loc(dt)
             if loc >= LOOKBACK + 1:
                 t_minus_1 = all_dates[loc - 1]
 
-                window_prices = closes_dkk.loc[:t_minus_1].tail(LOOKBACK + 1)  # LOOKBACK returns
+                window_prices = closes_dkk.loc[:t_minus_1].tail(LOOKBACK + 1)
                 window_rets = window_prices.pct_change(fill_method=None).dropna(axis=0, how="any")
 
-                # dynamic membership: only assets with enough data in the window
                 valid_cols = window_rets.count()
                 cols = valid_cols[valid_cols >= min_obs].index.tolist()
 
@@ -236,26 +237,28 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame) -> tuple[pd.Series, pd.
                         mu_ann, cov_ann = estimate_mu_cov_ann(wdw)
                         w_new = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
 
-                        # compute turnover vs current mapped into new universe
                         if w_current is None:
                             turnover = 1.0
                         else:
                             old = pd.Series(w_current, index=cols_current).reindex(cols).fillna(0.0).values
                             turnover = float(np.sum(np.abs(w_new - old)))
 
-                        # cost to apply when weights go live (next day)
                         pending_cost = turnover * fee
-
-                        # queue weights for next day
                         pending_w = w_new
                         pending_cols = cols
 
-                        # store weights at decision date dt
                         w_series = pd.Series(w_new, index=cols)
                         for tkr, wt in w_series.items():
                             weights_rows.append({"date": dt.date(), "ticker": tkr, "target_weight": float(wt)})
 
-        # Daily PnL using current weights
+        # Start tracking the equity curve from inception date
+        if not started:
+            if dt >= start_dt:
+                started = True
+            else:
+                continue
+
+        # Daily PnL using current weights (after inception)
         if w_current is None or cols_current is None:
             eq_series.append(equity)
             eq_index.append(dt)
