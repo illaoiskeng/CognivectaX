@@ -245,10 +245,10 @@ print("Sum weights:", float(w_series.sum()))
 print("Max weight:", float(w_series.max()))
 print("Top 10 weights:\n", w_series.head(10))
 
-    print(f"Universe tickers: {len(tickers)}")
-    print(f"Price rows: {len(closes_dkk)}")
-    print(f"Rebalance dates: {len(rebalance_dates)}")
-    print("First 5 rebalance dates:", list(rebalance_dates[:5].date))
+print(f"Universe tickers: {len(tickers)}")
+print(f"Price rows: {len(closes_dkk)}")
+print(f"Rebalance dates: {len(rebalance_dates)}")
+print("First 5 rebalance dates:", list(rebalance_dates[:5].date))
 
 if __name__ == "__main__":
     main()
