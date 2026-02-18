@@ -299,7 +299,7 @@ with c2:
     w_live = (w_target[common] * drift).clip(lower=0.0)
 
     if float(w_live.sum()) > 0:
-    w_live = w_live / float(w_live.sum())
+        w_live = w_live / float(w_live.sum())
 
     pie_df = w_live.reset_index()
     pie_df.columns = ["ticker", "weight"]
