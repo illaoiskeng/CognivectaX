@@ -229,26 +229,26 @@ def main():
     print(f"Wrote: {OUT_TEST_RESULTS}")
     # ---- TEST: first rebalance date weights using data up to t-1 ----
     first_reb = rebalance_dates[0]
-t_minus_1 = closes_dkk.index[closes_dkk.index.get_loc(first_reb) - 1]
+    t_minus_1 = closes_dkk.index[closes_dkk.index.get_loc(first_reb) - 1]
 
-prices_window = closes_dkk.loc[:t_minus_1].tail(252)
-rets_window = prices_window.pct_change().dropna()
+    prices_window = closes_dkk.loc[:t_minus_1].tail(252)
+    rets_window = prices_window.pct_change().dropna()
 
-mu_ann, cov_ann = estimate_mu_cov_ann(rets_window)
-w_opt = max_sharpe_weights(mu_ann, cov_ann, max_w=0.08)
+    mu_ann, cov_ann = estimate_mu_cov_ann(rets_window)
+    w_opt = max_sharpe_weights(mu_ann, cov_ann, max_w=0.08)
 
-w_series = pd.Series(w_opt, index=rets_window.columns).sort_values(ascending=False)
-print("\n--- OPT TEST ---")
-print("Rebalance date:", first_reb.date())
-print("Using data up to:", t_minus_1.date())
-print("Sum weights:", float(w_series.sum()))
-print("Max weight:", float(w_series.max()))
-print("Top 10 weights:\n", w_series.head(10))
-
-print(f"Universe tickers: {len(tickers)}")
-print(f"Price rows: {len(closes_dkk)}")
-print(f"Rebalance dates: {len(rebalance_dates)}")
-print("First 5 rebalance dates:", list(rebalance_dates[:5].date))
+    w_series = pd.Series(w_opt, index=rets_window.columns).sort_values(ascending=False)
+    print("\n--- OPT TEST ---")
+    print("Rebalance date:", first_reb.date())
+    print("Using data up to:", t_minus_1.date())
+    print("Sum weights:", float(w_series.sum()))
+    print("Max weight:", float(w_series.max()))
+    print("Top 10 weights:\n", w_series.head(10))
+    
+    print(f"Universe tickers: {len(tickers)}")
+    print(f"Price rows: {len(closes_dkk)}")
+    print(f"Rebalance dates: {len(rebalance_dates)}")
+    print("First 5 rebalance dates:", list(rebalance_dates[:5].date))
 
 if __name__ == "__main__":
     main()
