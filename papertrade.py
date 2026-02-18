@@ -228,7 +228,7 @@ def main():
     df_out.to_csv(OUT_TEST_RESULTS, index=False)
     print(f"Wrote: {OUT_TEST_RESULTS}")
     # ---- TEST: first rebalance date weights using data up to t-1 ----
-first_reb = rebalance_dates[0]
+    first_reb = rebalance_dates[0]
 t_minus_1 = closes_dkk.index[closes_dkk.index.get_loc(first_reb) - 1]
 
 prices_window = closes_dkk.loc[:t_minus_1].tail(252)
