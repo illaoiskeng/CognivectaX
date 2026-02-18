@@ -287,17 +287,22 @@ with c1:
 with c2:
     # Clean weights så vi undgår 1e-14 osv. og renormaliserer
     pie_df = weights.copy()
-    pie_df["weight"] = pd.to_numeric(pie_df["weight"], errors="coerce").fillna(0.0)
-    pie_df["weight"] = pie_df["weight"].clip(lower=0.0)
-    pie_df.loc[pie_df["weight"] < 1e-6, "weight"] = 0.0  # drop mikrovægte
+    pie_df["ticker"] = pie_df["ticker"].astype(str).str.upper()
 
-    s = float(pie_df["weight"].sum())
-    if s > 0:
-        pie_df["weight"] = pie_df["weight"] / s
+    # target weights (fra CSV) alignet til priser
+    w_target = pie_df.set_index("ticker")["weight"].astype(float)
 
-    # Full names til hover
-    name_map = get_full_names(pie_df["ticker"].tolist())
-    pie_df["full_name"] = pie_df["ticker"].map(name_map).fillna(pie_df["ticker"])
+    # live drift: w_i * (P_live / P_base) -> normaliser
+    common = live_last_dkk.index.intersection(last_daily_close_dkk.index).intersection(w_target.index)
+
+    drift = (live_last_dkk[common] / last_daily_close_dkk[common]).replace([np.inf, -np.inf], np.nan).fillna(1.0)
+    w_live = (w_target[common] * drift).clip(lower=0.0)
+
+    if float(w_live.sum()) > 0:
+    w_live = w_live / float(w_live.sum())
+
+    pie_df = w_live.reset_index()
+    pie_df.columns = ["ticker", "weight"]
 
     fig2 = px.pie(
         pie_df[pie_df["weight"] > 0],
