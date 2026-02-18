@@ -211,9 +211,18 @@ for s in strategies:
         "metric": f"{s}_avg_turnover",
         "value": float(np.mean(turnovers_map[s]))
     })
-]
 
-df_out = pd.DataFrame(results_rows)
+results_rows.append({
+    "test": "strategy_comparison",
+    "metric": "cost_bps",
+    "value": float(COST_BPS)
+})
+
+results_rows.append({
+    "test": "strategy_comparison",
+    "metric": "days",
+    "value": float(len(results[strategies[0]]))
+})
 
 # overwrite (så den altid viser seneste run)
 df_out.to_csv(OUT_TEST_RESULTS, index=False)
