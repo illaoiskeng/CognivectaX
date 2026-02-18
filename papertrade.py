@@ -127,7 +127,11 @@ for d in rebalance_dates:
     if loc >= 253:  # så t-1 har mindst 252 returns
         valid_reb.append(d)
 valid_reb = pd.DatetimeIndex(valid_reb)
+strategies = ["max_sharpe", "min_var", "equal_weight"]
 
+wf_returns_map = {s: [] for s in strategies}
+w_prev_map = {s: None for s in strategies}
+turnovers_map = {s: [] for s in strategies}
 wf_returns = []
 turnovers = []
 w_prev = None
@@ -144,49 +148,69 @@ for i, reb_date in enumerate(valid_reb):
     mu_ann, cov_ann = estimate_mu_cov_ann(window_rets)
     cols = window_rets.columns.tolist()
 
-    w_opt = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
-    w_opt = pd.Series(w_opt, index=cols)
+    w_ms = pd.Series(max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W), index=cols)
+    w_mv = pd.Series(min_var_weights(cov_ann, max_w=MAX_W), index=cols)
+    w_eq = pd.Series(equal_weight(len(cols), max_w=MAX_W), index=cols)
+
+    w_dict = {
+    "max_sharpe": w_ms,
+    "min_var": w_mv,
+    "equal_weight": w_eq,
+    }
+for s in strategies:
+    w_new = w_dict[s]
+
     # turnover
-if w_prev is None:
-    to = float(np.abs(w_opt).sum())
-else:
-    aligned = w_prev.reindex(cols).fillna(0.0)
-    to = float(np.abs(w_opt - aligned).sum())
-
-turnovers.append(to)
-w_prev = w_opt.copy()
-
-
-
-    # næste periode = reb_date til dagen før næste rebalance
-    if i + 1 < len(valid_reb):
-        end_date = valid_reb[i + 1]
-        period_rets = rets_daily.loc[reb_date:end_date, cols].copy()
+    if w_prev_map[s] is None:
+        to = float(np.abs(w_new).sum())
     else:
-        period_rets = rets_daily.loc[reb_date:, cols].copy()
+        aligned = w_prev_map[s].reindex(cols).fillna(0.0)
+        to = float(np.abs(w_new - aligned).sum())
 
-    port_ret = (period_rets @ w_opt).astype(float)
+    turnovers_map[s].append(to)
 
-# træk trading cost på første dag i perioden
-cost = to * (COST_BPS / 10000.0)
-if len(port_ret) > 0:
-    port_ret.iloc[0] = port_ret.iloc[0] - cost
-    wf_returns.append(port_ret)
+    port_ret = (period_rets @ w_new).astype(float)
 
-wf = pd.concat(wf_returns).sort_index()
+    # træk trading cost på første dag i perioden
+    cost = to * (COST_BPS / 10000.0)
+    if len(port_ret) > 0:
+        port_ret.iloc[0] = port_ret.iloc[0] - cost
+
+    wf_returns_map[s].append(port_ret)
+
+    w_prev_map[s] = w_new.copy()
+
+results = {}
+
+for s in strategies:
+    r = pd.concat(wf_returns_map[s]).sort_index()
+    r = r[~r.index.duplicated(keep="first")]
+    results[s] = r
 wf = wf[~wf.index.duplicated(keep="first")]
 
-print("\n--- TEST 1: WALK-FORWARD OUT-OF-SAMPLE SHARPE (MAX-SHARPE) ---")
-print("Gross Sharpe:", round(sharpe_from_daily_returns(wf + 0), 3))
-print("Net Sharpe:", round(sharpe_from_daily_returns(wf), 3))
-print("Avg turnover per rebalance:", round(float(np.mean(turnovers)), 3))
-print("Days:", len(wf))
-results_rows = [
-    {"test": "walk_forward_max_sharpe", "metric": "gross_sharpe", "value": float(sharpe_from_daily_returns(wf + 0))},
-    {"test": "walk_forward_max_sharpe", "metric": "net_sharpe", "value": float(sharpe_from_daily_returns(wf))},
-    {"test": "walk_forward_max_sharpe", "metric": "avg_turnover", "value": float(np.mean(turnovers))},
-    {"test": "walk_forward_max_sharpe", "metric": "days", "value": float(len(wf))},
-    {"test": "walk_forward_max_sharpe", "metric": "cost_bps", "value": float(COST_BPS)},
+print("\n--- TEST 3: STRATEGY COMPARISON ---")
+
+for s in strategies:
+    print(
+        s,
+        "Sharpe:",
+        round(sharpe_from_daily_returns(results[s]), 3),
+        "Avg TO:",
+        round(float(np.mean(turnovers_map[s])), 3),
+    )
+results_rows = []
+
+for s in strategies:
+    results_rows.append({
+        "test": "strategy_comparison",
+        "metric": f"{s}_sharpe",
+        "value": float(sharpe_from_daily_returns(results[s]))
+    })
+    results_rows.append({
+        "test": "strategy_comparison",
+        "metric": f"{s}_avg_turnover",
+        "value": float(np.mean(turnovers_map[s]))
+    })
 ]
 
 df_out = pd.DataFrame(results_rows)
