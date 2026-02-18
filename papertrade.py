@@ -126,6 +126,9 @@ for d in rebalance_dates:
 valid_reb = pd.DatetimeIndex(valid_reb)
 
 wf_returns = []
+turnovers = []
+w_prev = None
+COST_BPS = 10  # 10 bps pr 100% turnover (0.10%)
 
 for i, reb_date in enumerate(valid_reb):
     reb_loc = closes_dkk.index.get_loc(reb_date)
@@ -140,6 +143,17 @@ for i, reb_date in enumerate(valid_reb):
 
     w_opt = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
     w_opt = pd.Series(w_opt, index=cols)
+    # turnover
+if w_prev is None:
+    to = float(np.abs(w_opt).sum())
+else:
+    aligned = w_prev.reindex(cols).fillna(0.0)
+    to = float(np.abs(w_opt - aligned).sum())
+
+turnovers.append(to)
+w_prev = w_opt.copy()
+
+
 
     # næste periode = reb_date til dagen før næste rebalance
     if i + 1 < len(valid_reb):
@@ -149,13 +163,20 @@ for i, reb_date in enumerate(valid_reb):
         period_rets = rets_daily.loc[reb_date:, cols].copy()
 
     port_ret = (period_rets @ w_opt).astype(float)
+
+# træk trading cost på første dag i perioden
+cost = to * (COST_BPS / 10000.0)
+if len(port_ret) > 0:
+    port_ret.iloc[0] = port_ret.iloc[0] - cost
     wf_returns.append(port_ret)
 
 wf = pd.concat(wf_returns).sort_index()
 wf = wf[~wf.index.duplicated(keep="first")]
 
 print("\n--- TEST 1: WALK-FORWARD OUT-OF-SAMPLE SHARPE (MAX-SHARPE) ---")
-print("Sharpe:", round(sharpe_from_daily_returns(wf), 3))
+print("Gross Sharpe:", round(sharpe_from_daily_returns(wf + 0), 3))
+print("Net Sharpe:", round(sharpe_from_daily_returns(wf), 3))
+print("Avg turnover per rebalance:", round(float(np.mean(turnovers)), 3))
 print("Days:", len(wf))
 
     # ---- TEST: first rebalance date weights using data up to t-1 ----
