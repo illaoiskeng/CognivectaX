@@ -257,7 +257,7 @@ elif view == "12 timer":
 else:  # "1 dag"
     dtick = 3 * 60 * 60 * 1000
             
-    fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK) – Live")
+            fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK) – Live")
             fig.update_xaxes(tickformat="%H:%M", dtick=dtick)
             fig.update_traces(hovertemplate="Tid: %{x}<br>Værdi: %{y:,.0f} kr")
             fig.update_yaxes(tickformat=",.0f", title="DKK")
