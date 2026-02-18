@@ -248,14 +248,14 @@ with c1:
 
             eq_df = intraday_equity.reset_index()
             eq_df.columns = ["Date", "CognivectaX"]
-if view == "15 min":
-    dtick = 5 * 60 * 1000
-elif view == "1 time":
-    dtick = 15 * 60 * 1000
-elif view == "12 timer":
-    dtick = 60 * 60 * 1000
-else:  # "1 dag"
-    dtick = 3 * 60 * 60 * 1000
+            if view == "15 min":
+                dtick = 5 * 60 * 1000
+            elif view == "1 time":
+                dtick = 15 * 60 * 1000
+            elif view == "12 timer":
+                dtick = 60 * 60 * 1000
+            else:  # "1 dag"
+                dtick = 3 * 60 * 60 * 1000
             
             fig = px.line(eq_df, x="Date", y="CognivectaX", title="Equity Curve (DKK) – Live")
             fig.update_xaxes(tickformat="%H:%M", dtick=dtick)
