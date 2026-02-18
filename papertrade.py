@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from scipy.optimize import minimize
 
 DATA_WEIGHTS_LATEST = "data/weights_latest.csv"
 OUT_DIR = "data/papertrade"
@@ -49,6 +50,42 @@ def last_trading_day_each_month(index_dt: pd.DatetimeIndex) -> pd.DatetimeIndex:
     last = s.groupby([index_dt.year, index_dt.month]).max().values
     return pd.DatetimeIndex(last)
 
+def max_sharpe_weights(mu_ann: np.ndarray, cov_ann: np.ndarray, max_w: float = 0.08) -> np.ndarray:
+    n = len(mu_ann)
+
+    def neg_sharpe(w):
+        # rf=0
+        port_ret = float(w @ mu_ann)
+        port_vol = float(np.sqrt(w @ cov_ann @ w))
+        if port_vol <= 0:
+            return 1e9
+        return -(port_ret / port_vol)
+
+    cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+    bounds = [(0.0, max_w)] * n
+    x0 = np.ones(n) / n
+    # sørg for x0 respekterer cap
+    if (x0 > max_w).any():
+        x0 = np.minimum(x0, max_w)
+        x0 = x0 / x0.sum()
+
+    res = minimize(neg_sharpe, x0=x0, bounds=bounds, constraints=cons, method="SLSQP")
+    if not res.success:
+        raise RuntimeError(f"Optimizer failed: {res.message}")
+    w = res.x
+    # numerisk cleanup
+    w[w < 0] = 0.0
+    w = np.minimum(w, max_w)
+    w = w / w.sum()
+    return w
+
+def estimate_mu_cov_ann(returns_daily: pd.DataFrame):
+    mu_daily = returns_daily.mean().values
+    cov_daily = returns_daily.cov().values
+    mu_ann = mu_daily * 252.0
+    cov_ann = cov_daily * 252.0
+    return mu_ann, cov_ann
+
 def main():
     ensure_outputs()
 
@@ -65,6 +102,24 @@ def main():
 
     # Rebalance dates = sidste handelsdag i måneden
     rebalance_dates = last_trading_day_each_month(closes_dkk.index)
+
+    # ---- TEST: first rebalance date weights using data up to t-1 ----
+first_reb = rebalance_dates[0]
+t_minus_1 = closes_dkk.index[closes_dkk.index.get_loc(first_reb) - 1]
+
+prices_window = closes_dkk.loc[:t_minus_1].tail(252)
+rets_window = prices_window.pct_change().dropna()
+
+mu_ann, cov_ann = estimate_mu_cov_ann(rets_window)
+w_opt = max_sharpe_weights(mu_ann, cov_ann, max_w=0.08)
+
+w_series = pd.Series(w_opt, index=rets_window.columns).sort_values(ascending=False)
+print("\n--- OPT TEST ---")
+print("Rebalance date:", first_reb.date())
+print("Using data up to:", t_minus_1.date())
+print("Sum weights:", float(w_series.sum()))
+print("Max weight:", float(w_series.max()))
+print("Top 10 weights:\n", w_series.head(10))
 
     print(f"Universe tickers: {len(tickers)}")
     print(f"Price rows: {len(closes_dkk)}")
