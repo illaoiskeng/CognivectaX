@@ -8,6 +8,7 @@ DATA_WEIGHTS_LATEST = "data/weights_latest.csv"
 OUT_DIR = "data/papertrade"
 OUT_WEIGHTS_REB = os.path.join(OUT_DIR, "weights_rebalance.csv")
 OUT_VALUE_DAILY = os.path.join(OUT_DIR, "portfolio_value_daily.csv")
+OUT_TEST_RESULTS = os.path.join(OUT_DIR, "test_results.csv")
 
 START_CAPITAL_DKK = 100_000
 INCEPTION_DATE = "2026-01-01"
@@ -20,6 +21,8 @@ def ensure_outputs():
 
     if not os.path.exists(OUT_VALUE_DAILY):
         pd.DataFrame(columns=["date", "total_value"]).to_csv(OUT_VALUE_DAILY, index=False)
+    if not os.path.exists(OUT_TEST_RESULTS):
+        pd.DataFrame(columns=["test", "metric", "value"]).to_csv(OUT_TEST_RESULTS, index=False)
 
 def load_universe():
     df = pd.read_csv(DATA_WEIGHTS_LATEST)
@@ -178,7 +181,19 @@ print("Gross Sharpe:", round(sharpe_from_daily_returns(wf + 0), 3))
 print("Net Sharpe:", round(sharpe_from_daily_returns(wf), 3))
 print("Avg turnover per rebalance:", round(float(np.mean(turnovers)), 3))
 print("Days:", len(wf))
+results_rows = [
+    {"test": "walk_forward_max_sharpe", "metric": "gross_sharpe", "value": float(sharpe_from_daily_returns(wf + 0))},
+    {"test": "walk_forward_max_sharpe", "metric": "net_sharpe", "value": float(sharpe_from_daily_returns(wf))},
+    {"test": "walk_forward_max_sharpe", "metric": "avg_turnover", "value": float(np.mean(turnovers))},
+    {"test": "walk_forward_max_sharpe", "metric": "days", "value": float(len(wf))},
+    {"test": "walk_forward_max_sharpe", "metric": "cost_bps", "value": float(COST_BPS)},
+]
 
+df_out = pd.DataFrame(results_rows)
+
+# overwrite (så den altid viser seneste run)
+df_out.to_csv(OUT_TEST_RESULTS, index=False)
+print(f"Wrote: {OUT_TEST_RESULTS}")
     # ---- TEST: first rebalance date weights using data up to t-1 ----
 first_reb = rebalance_dates[0]
 t_minus_1 = closes_dkk.index[closes_dkk.index.get_loc(first_reb) - 1]
