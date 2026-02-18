@@ -215,13 +215,38 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                 t_minus_1 = all_dates[loc - 1]
 
                 window_prices = closes_dkk.loc[:t_minus_1].tail(LOOKBACK + 1)
-                window_rets = window_prices.pct_change(fill_method=None).dropna(axis=0, how="any")
 
-                valid_cols = window_rets.count()
-                cols = valid_cols[valid_cols >= min_obs].index.tolist()
+# IMPORTANT: do NOT drop rows across the full universe before choosing cols
+window_rets_full = window_prices.pct_change(fill_method=None)
 
-                if len(cols) >= 10:
-                    wdw = window_rets[cols].dropna(axis=0, how="any")
+# pick investable columns based on how many observations they have in the window
+valid_cols = window_rets_full.count()
+cols = valid_cols[valid_cols >= min_obs].index.tolist()
+
+if len(cols) >= 10:
+    # now restrict to the investable set, then drop rows that have NaNs within THAT set
+    wdw = window_rets_full[cols].dropna(axis=0, how="any")
+
+    if len(wdw) >= min_obs:
+        mu_ann, cov_ann = estimate_mu_cov_ann(wdw)
+        w_new = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
+
+        if w_current is None:
+            turnover = 1.0
+        else:
+            old = pd.Series(w_current, index=cols_current).reindex(cols).fillna(0.0).values
+            turnover = float(np.sum(np.abs(w_new - old)))
+
+        pending_cost = turnover * fee
+        pending_w = w_new
+        pending_cols = cols
+
+        for tkr, wt in pd.Series(w_new, index=cols).items():
+            weights_rows.append({
+                "date": dt.date(),
+                "ticker": tkr,
+                "target_weight": float(wt)
+            })
 
                     if len(wdw) >= min_obs:
                         mu_ann, cov_ann = estimate_mu_cov_ann(wdw)
