@@ -86,6 +86,15 @@ def estimate_mu_cov_ann(returns_daily: pd.DataFrame):
     cov_ann = cov_daily * 252.0
     return mu_ann, cov_ann
 
+def sharpe_from_daily_returns(r: pd.Series) -> float:
+    r = r.dropna()
+    if len(r) < 2:
+        return np.nan
+    vol = r.std()
+    if vol == 0:
+        return np.nan
+    return float((r.mean() / vol) * np.sqrt(252.0))
+
 def main():
     ensure_outputs()
 
@@ -102,6 +111,52 @@ def main():
 
     # Rebalance dates = sidste handelsdag i måneden
     rebalance_dates = last_trading_day_each_month(closes_dkk.index)
+
+# ---------------- TEST 1: Walk-forward out-of-sample Sharpe (MAX-SHARPE) ----------------
+MAX_W = 0.08
+
+rets_daily = closes_dkk.pct_change().dropna()
+
+# rebalance-datoer hvor vi kan lave 252d lookback (t-1)
+valid_reb = []
+for d in rebalance_dates:
+    loc = closes_dkk.index.get_loc(d)
+    if loc >= 253:  # så t-1 har mindst 252 returns
+        valid_reb.append(d)
+valid_reb = pd.DatetimeIndex(valid_reb)
+
+wf_returns = []
+
+for i, reb_date in enumerate(valid_reb):
+    reb_loc = closes_dkk.index.get_loc(reb_date)
+    t_minus_1 = closes_dkk.index[reb_loc - 1]
+
+    # 252d window (baseret på data op til t-1)
+    window_prices = closes_dkk.loc[:t_minus_1].tail(253)  # 253 priser -> 252 returns
+    window_rets = window_prices.pct_change().dropna()
+
+    mu_ann, cov_ann = estimate_mu_cov_ann(window_rets)
+    cols = window_rets.columns.tolist()
+
+    w_opt = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
+    w_opt = pd.Series(w_opt, index=cols)
+
+    # næste periode = reb_date til dagen før næste rebalance
+    if i + 1 < len(valid_reb):
+        end_date = valid_reb[i + 1]
+        period_rets = rets_daily.loc[reb_date:end_date, cols].copy()
+    else:
+        period_rets = rets_daily.loc[reb_date:, cols].copy()
+
+    port_ret = (period_rets @ w_opt).astype(float)
+    wf_returns.append(port_ret)
+
+wf = pd.concat(wf_returns).sort_index()
+wf = wf[~wf.index.duplicated(keep="first")]
+
+print("\n--- TEST 1: WALK-FORWARD OUT-OF-SAMPLE SHARPE (MAX-SHARPE) ---")
+print("Sharpe:", round(sharpe_from_daily_returns(wf), 3))
+print("Days:", len(wf))
 
     # ---- TEST: first rebalance date weights using data up to t-1 ----
 first_reb = rebalance_dates[0]
