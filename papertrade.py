@@ -79,8 +79,28 @@ def get_usd_to_dkk_series():
 
 def month_end_trade_dates(index_dt: pd.DatetimeIndex) -> pd.DatetimeIndex:
     s = pd.Series(index_dt, index=index_dt)
+    # Get the last trading day of each month
     last = s.groupby([index_dt.year, index_dt.month]).max().values
-    return pd.DatetimeIndex(pd.to_datetime(last)).sort_values().unique()
+    last_dates = pd.DatetimeIndex(pd.to_datetime(last)).sort_values().unique()
+    
+    # Filter to only include dates where the next trading day is in a different month
+    # (ensures we don't include mid-month dates that happen to be the last in the dataset)
+    month_ends = []
+    for dt in last_dates:
+        # Find the next trading day
+        idx = index_dt.get_loc(dt)
+        if idx < len(index_dt) - 1:
+            next_dt = index_dt[idx + 1]
+            if next_dt.month != dt.month:
+                month_ends.append(dt)
+        else:
+            # Last date in dataset - only include if it's actually a month boundary
+            if idx > 0:
+                prev_dt = index_dt[idx - 1]
+                if prev_dt.month != dt.month:
+                    month_ends.append(dt)
+    
+    return pd.DatetimeIndex(month_ends)
 
 def estimate_mu_cov_ann(returns_daily: pd.DataFrame):
     mu_daily = returns_daily.mean().values
