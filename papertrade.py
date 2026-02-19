@@ -241,39 +241,24 @@ def main():
     fx = get_usd_to_dkk_series()
     print(f"FX date range: {fx.index[0]} to {fx.index[-1]}")
     
+    # Remove timezone from both BEFORE any operations
+    if closes_usd.index.tz is not None:
+        closes_usd.index = closes_usd.index.tz_localize(None)
+    if fx.index.tz is not None:
+        fx.index = fx.index.tz_localize(None)
+    
+    # Now reindex and forward fill
     fx = fx.reindex(closes_usd.index).ffill()
-    print(f"\nDEBUG - Before timezone removal:")
-    print(f"  closes_usd.index[:3]: {closes_usd.index[:3]}")
-    print(f"  fx.index[:3]: {fx.index[:3]}")
-    print(f"  closes_usd.index[-3:]: {closes_usd.index[-3:]}")
-    print(f"  fx.index[-3:]: {fx.index[-3:]}")
     
-    # Remove timezone info to ensure proper alignment
-    closes_usd.index = closes_usd.index.tz_localize(None)
-    fx.index = fx.index.tz_localize(None)
-    
-    print(f"\nDEBUG - After timezone removal:")
-    print(f"  closes_usd.index[:3]: {closes_usd.index[:3]}")
-    print(f"  fx.index[:3]: {fx.index[:3]}")
-    print(f"  closes_usd first value: {closes_usd.iloc[0, 0]}")
-    print(f"  fx first value: {fx.iloc[0]}")
-    
-    # Multiply each column by the fx rate
-    closes_dkk = closes_usd.mul(fx, axis=0)
-    
-    print(f"\nclosses_dkk sample (first 5 rows, first 3 cols):\n{closes_dkk.iloc[:5, :3]}")
-    print(f"closes_dkk NaN summary: {closes_dkk.isna().sum().sum()} NaNs out of {closes_dkk.size} total values")
-    
-    print(f"Closes DKK shape: {closes_dkk.shape}")
-    print(f"closes_dkk NaN summary: {closes_dkk.isna().sum().sum()} NaNs out of {closes_dkk.size} total values")
-    
-    print(f"Closes DKK shape: {closes_dkk.shape}")
-    print(f"closes_dkk NaN summary: {closes_dkk.isna().sum().sum()} NaNs out of {closes_dkk.size} total values")
-    
-    print(f"Closes DKK shape: {closes_dkk.shape}")
+    # Simple multiplication - should work now
+    closes_dkk = closes_usd.copy()
+    for col in closes_dkk.columns:
+        closes_dkk[col] = (closes_usd[col].values * fx.values)
     
     print(f"Closes DKK shape: {closes_dkk.shape}")
     print(f"Closes DKK date range: {closes_dkk.index[0]} to {closes_dkk.index[-1]}")
+    print(f"closes_dkk sample (first 5 rows, first 3 cols):\n{closes_dkk.iloc[:5, :3]}")
+    print(f"closes_dkk NaN count: {closes_dkk.isna().sum().sum()}")
     
     print(f"\nRunning walk-forward backtest from {INCEPTION_DATE}...\n")
     eq, w_hist = run_walkforward_papertrade(closes_dkk)
