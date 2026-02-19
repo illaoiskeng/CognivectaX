@@ -177,7 +177,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                 print(f"  Window NaN counts (first 5): {window_prices.isna().sum().head().to_dict()}")
                 print(f"  Window non-NaN counts (first 5): {window_prices.count().head().to_dict()}")
                 
-                window_rets_full = window_prices.pct_change(fill_method=None)  # ✅ FIX #2: Added fill_method=None
+                window_rets_full = rets.iloc[loc - LOOKBACK:loc]
                 print(f"  Returns shape: {window_rets_full.shape}")
                 print(f"  Returns NaN counts (first 5): {window_rets_full.isna().sum().head().to_dict()}")
                 valid_cols = window_rets_full.count()
@@ -191,7 +191,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                     print(f"  DEBUG wdw.mean(): {wdw.mean().values}")
                     print(f"  DEBUG wdw.std(): {wdw.std().values}")
                     print(f"  Rows in clean window: {len(wdw)}")
-                    print(f"  Rows in clean window: {len(wdw)}")
+                    
                     
                     if len(wdw) >= min_obs:
                         print(f"  DEBUG wdw shape: {wdw.shape}, first 3 tickers mean returns: {wdw.iloc[:, :3].mean().values}")
