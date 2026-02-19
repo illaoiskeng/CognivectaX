@@ -101,51 +101,55 @@ if prices_usd.empty:
     st.stop()
 
 prices_dkk = prices_usd * usd_to_dkk
-
 last_daily_close_dkk = prices_dkk.iloc[-1]
 
 @st.cache_data(ttl=5)
 def download_live_last_prices_dkk(tickers: list[str], usd_to_dkk: float) -> pd.Series:
-    raw = yf.download(
-        tickers,
-        period="1d",
-        interval="1m",
-        auto_adjust=True,
-        progress=False,
-        threads=False,
-    )
-    if raw is None or raw.empty:
+    try:
+        raw = yf.download(
+            tickers,
+            period="1d",
+            interval="1m",
+            auto_adjust=True,
+            progress=False,
+            threads=False,
+        )
+        if raw is None or raw.empty:
+            return pd.Series(dtype=float)
+        close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else pd.DataFrame({tickers[0]: raw["Close"]})
+        close = close.dropna(how="all")
+        if close.empty:
+            return pd.Series(dtype=float)
+        return close.iloc[-1] * usd_to_dkk
+    except Exception as e:
+        st.warning(f"Could not fetch live prices: {e}")
         return pd.Series(dtype=float)
-    close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else pd.DataFrame({tickers[0]: raw["Close"]})
-    close = close.dropna(how="all")
-    if close.empty:
-        return pd.Series(dtype=float)
-    return close.iloc[-1] * usd_to_dkk
 
 @st.cache_data(ttl=5)
 def download_intraday_close_dkk(tickers, usd_to_dkk):
-    raw = yf.download(
-        tickers,
-        period="1d",
-        interval="1m",
-        auto_adjust=True,
-        progress=False,
-        threads=False
-    )
-    if raw is None or raw.empty:
+    try:
+        raw = yf.download(
+            tickers,
+            period="1d",
+            interval="1m",
+            auto_adjust=True,
+            progress=False,
+            threads=False
+        )
+        if raw is None or raw.empty:
+            return pd.DataFrame()
+        close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else pd.DataFrame({tickers[0]: raw["Close"]})
+        return close.dropna(how="all").sort_index() * usd_to_dkk
+    except Exception as e:
+        st.warning(f"Could not fetch intraday prices: {e}")
         return pd.DataFrame()
-    close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else pd.DataFrame({tickers[0]: raw["Close"]})
-    return close.dropna(how="all").sort_index() * usd_to_dkk
 
 w = weights.set_index("ticker")["weight"].reindex(prices_dkk.columns).fillna(0.0)
 
 live_last_dkk = download_live_last_prices_dkk(tickers, usd_to_dkk)
-st.write(f"DEBUG live_last_dkk: {live_last_dkk}")
-st.write(f"DEBUG live_last_dkk type: {type(live_last_dkk)}")
-st.write(f"DEBUG live_last_dkk length: {len(live_last_dkk)}")
 common = live_last_dkk.index.intersection(last_daily_close_dkk.index)
 
-if len(common) > 0:
+if len(common) > 0 and len(live_last_dkk) > 0:
     intraday_rets = (live_last_dkk[common] / last_daily_close_dkk[common] - 1.0).fillna(0.0)
     w_common = w.reindex(common).fillna(0.0)
     live_multiplier = 1.0 + float(intraday_rets @ w_common)
@@ -234,40 +238,26 @@ with c1:
         st.plotly_chart(fig, use_container_width=True)
 
 with c2:
-    pie_df = weights.copy()
-    w_target = pie_df.set_index("ticker")["weight"].astype(float)
-
-   common = live_last_dkk.index.intersection(last_daily_close_dkk.index).intersection(w_target.index)
-
-    # DEBUG
-    st.write(f"DEBUG: live_last_dkk length: {len(live_last_dkk)}")
-    st.write(f"DEBUG: last_daily_close_dkk length: {len(last_daily_close_dkk)}")
-    st.write(f"DEBUG: common length: {len(common)}")
+    pie_data = weights[weights["weight"] > 0].copy()
     
-    drift = (live_last_dkk[common] / last_daily_close_dkk[common]).replace([np.inf, -np.inf], np.nan).fillna(1.0)
-    w_live = (w_target[common] * drift).clip(lower=0.0)
-    if float(w_live.sum()) > 0:
-        w_live = w_live / float(w_live.sum())
-
-    pie_df = w_live.reset_index()
-    pie_df.columns = ["ticker", "weight"]
-
-    name_map = get_full_names(pie_df["ticker"].tolist())
-    pie_df["full_name"] = pie_df["ticker"].map(name_map).fillna(pie_df["ticker"])
-
-    fig2 = px.pie(
-        pie_df[pie_df["weight"] > 0],
-        names="ticker",
-        values="weight",
-        title="Weight Allocation"
-    )
-    fig2.update_traces(
-        textinfo="label",
-        customdata=pie_df.loc[pie_df["weight"] > 0, "full_name"],
-        hovertemplate="<b>%{label}</b><br>%{customdata}<br>Vægt: %{percent}<extra></extra>"
-    )
-    fig2.update_layout(showlegend=False)
-    st.plotly_chart(fig2, use_container_width=True)
+    if len(pie_data) > 0:
+        name_map = get_full_names(pie_data["ticker"].tolist())
+        pie_data["full_name"] = pie_data["ticker"].map(name_map)
+        
+        fig2 = px.pie(
+            pie_data,
+            names="ticker",
+            values="weight",
+            title="Target Weight Allocation"
+        )
+        fig2.update_traces(
+            textinfo="label",
+            hovertemplate="<b>%{label}</b><br>Vægt: %{value:.2%}<extra></extra>"
+        )
+        fig2.update_layout(showlegend=False)
+        st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.info("Ingen beholdninger med vægt > 0")
 
 st.subheader("Holdings")
 
