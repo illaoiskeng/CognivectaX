@@ -243,6 +243,8 @@ def main():
     
     fx = fx.reindex(closes_usd.index).ffill()
     closes_dkk = closes_usd.mul(fx, axis=0)
+    print(f"closes_dkk sample (first 5 rows, first 3 cols):\n{closes_dkk.iloc[:5, :3]}")
+    print(f"closes_dkk NaN summary: {closes_dkk.isna().sum().sum()} NaNs out of {closes_dkk.size} total values")
     
     print(f"Closes DKK shape: {closes_dkk.shape}")
     print(f"Closes DKK date range: {closes_dkk.index[0]} to {closes_dkk.index[-1]}")
