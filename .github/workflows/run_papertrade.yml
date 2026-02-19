@@ -24,7 +24,7 @@ jobs:
           pip install pandas numpy yfinance scipy
 
       - name: Run papertrade
-        run: python papertrade.py
+        run: python runner.py
 
       - name: Commit results
         run: |
