@@ -307,6 +307,7 @@ def main():
         last_date = pd.to_datetime(w_hist["date"]).max()
         latest = w_hist[pd.to_datetime(w_hist["date"]) == last_date].copy()
         latest = latest.rename(columns={"target_weight": "weight"})[["ticker", "weight"]]
+        latest = latest[latest["weight"] > 0.0001].copy()  # Filter out numerical noise
         latest = latest.sort_values("weight", ascending=False)
         latest.to_csv(OUT_WEIGHTS_LATEST, index=False)
         print(f"Wrote: {OUT_WEIGHTS_LATEST}")
