@@ -267,10 +267,7 @@ def main():
     # Now reindex and forward fill
     fx = fx.reindex(closes_usd.index).ffill()
     
-    # Simple multiplication - should work now
-    closes_dkk = closes_usd.copy()
-    for col in closes_dkk.columns:
-        closes_dkk[col] = (closes_usd[col].values * fx.values)
+    closes_dkk = closes_usd.mul(fx, axis=0)
     
     print(f"Closes DKK shape: {closes_dkk.shape}")
     print(f"Closes DKK date range: {closes_dkk.index[0]} to {closes_dkk.index[-1]}")
