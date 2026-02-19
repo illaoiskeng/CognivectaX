@@ -209,6 +209,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
 
         # Rebalance decision (month-end)
         if dt in reb_set:
+            print(f"\nRebalance check at {dt.date()}")
 
             loc = all_dates.get_loc(dt)
 
@@ -224,11 +225,13 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                 # Select investable columns based on history length
                 valid_cols = window_rets_full.count()
                 cols = valid_cols[valid_cols >= min_obs].index.tolist()
+                print(f"  Eligible tickers: {len(cols)}")
 
                 if len(cols) >= 10:
 
                     # Now drop rows only within the investable universe
                     wdw = window_rets_full[cols].dropna(axis=0, how="any")
+                    print(f"  Rows in clean window: {len(wdw)}")
 
                     if len(wdw) >= min_obs:
 
