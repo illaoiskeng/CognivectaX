@@ -121,6 +121,20 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
     rets = closes_dkk.pct_change()
     all_dates = rets.index
     
+    print(f"\n=== WALKFORWARD DEBUG ===")
+    print(f"Total dates in dataset: {len(all_dates)}")
+    print(f"Date range: {all_dates[0]} to {all_dates[-1]}")
+    print(f"INCEPTION_DATE: {start_dt}")
+    print(f"Dates >= INCEPTION_DATE: {(all_dates >= start_dt).sum()}")
+    
+    month_ends = set(month_end_trade_dates(all_dates))
+    print(f"Month-end dates in dataset: {len(month_ends)}")
+    print(f"Month-ends >= INCEPTION_DATE: {sum(1 for m in month_ends if m >= start_dt)}")
+    if month_ends:
+        print(f"First 5 month-ends: {sorted(month_ends)[:5]}")
+        print(f"Last 5 month-ends: {sorted(month_ends)[-5:]}")
+    print(f"===\n")
+    
     equity = START_CAPITAL_DKK
     eq_series = []
     eq_index = []
@@ -132,10 +146,10 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
     min_obs = max(60, int(0.7 * LOOKBACK))
     fee = TURNOVER_COST_BPS / 10000.0
     started = False
-    month_ends = set(month_end_trade_dates(all_dates))
     
     for i, dt in enumerate(all_dates):
         if not started and dt >= start_dt:
+            print(f"Starting at {dt}")
             started = True
         if not started:
             continue
@@ -149,11 +163,15 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
         if is_day_after_month_end:
             print(f"\nRebalancing on {dt.date()} (day after month-end {prev_dt.date()})")
             loc = all_dates.get_loc(prev_dt)
+            print(f"  Location in index: {loc}, LOOKBACK: {LOOKBACK}")
             
             if loc >= LOOKBACK:
                 window_prices = closes_dkk.loc[:prev_dt].tail(LOOKBACK + 1)
+                print(f"  Window shape: {window_prices.shape}, First date: {window_prices.index[0]}, Last date: {window_prices.index[-1]}")
+                
                 window_rets_full = window_prices.pct_change()
                 valid_cols = window_rets_full.count()
+                print(f"  Non-NaN counts per ticker (first 5): {valid_cols.head().to_dict()}")
                 cols = valid_cols[valid_cols >= min_obs].index.tolist()
                 print(f"  Eligible tickers: {len(cols)}")
                 
@@ -213,9 +231,17 @@ def main():
     ensure_outputs()
     print("Downloading prices (USD) + FX (USD/DKK)...")
     closes_usd = robust_download_close(TICKERS, start=DATA_START_DATE, period=None, interval="1d")
+    print(f"Closes USD shape: {closes_usd.shape}")
+    print(f"Closes USD date range: {closes_usd.index[0]} to {closes_usd.index[-1]}")
+    
     fx = get_usd_to_dkk_series()
+    print(f"FX date range: {fx.index[0]} to {fx.index[-1]}")
+    
     fx = fx.reindex(closes_usd.index).ffill()
     closes_dkk = closes_usd.mul(fx, axis=0)
+    
+    print(f"Closes DKK shape: {closes_dkk.shape}")
+    print(f"Closes DKK date range: {closes_dkk.index[0]} to {closes_dkk.index[-1]}")
     
     print(f"\nRunning walk-forward backtest from {INCEPTION_DATE}...\n")
     eq, w_hist = run_walkforward_papertrade(closes_dkk)
