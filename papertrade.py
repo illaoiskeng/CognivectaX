@@ -175,9 +175,6 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
     rets = closes_dkk.pct_change(fill_method=None)
     all_dates = rets.index
 
-    reb_dates = last_trading_day_each_month(all_dates)
-    reb_set = set(reb_dates)
-
     equity = START_CAPITAL_DKK
     eq_series = []
     eq_index = []
@@ -208,7 +205,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
             pending_cost = 0.0
 
         # Rebalance decision (month-end)
-        if dt in reb_set:
+        if dt.month != all_dates[all_dates.get_loc(dt) + 1].month if all_dates.get_loc(dt) < len(all_dates) - 1 else True:
             print(f"\nRebalance check at {dt.date()}")
 
             loc = all_dates.get_loc(dt)
