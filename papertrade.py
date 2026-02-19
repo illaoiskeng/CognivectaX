@@ -267,7 +267,8 @@ def main():
     # Now reindex and forward fill
     fx = fx.reindex(closes_usd.index).ffill()
     
-    closes_dkk = closes_usd.mul(fx, axis=0)
+    closes_dkk = closes_usd.values * fx.values.reshape(-1, 1)
+    closes_dkk = pd.DataFrame(closes_dkk, index=closes_usd.index, columns=closes_usd.columns)
     
     print(f"Closes DKK shape: {closes_dkk.shape}")
     print(f"Closes DKK date range: {closes_dkk.index[0]} to {closes_dkk.index[-1]}")
