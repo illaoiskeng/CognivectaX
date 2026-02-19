@@ -182,7 +182,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                 print(f"  Eligible tickers: {len(cols)}")
                 
                 if len(cols) >= 10:
-                    wdw = window_rets_full[cols].iloc[1:].dropna(axis=0, how="any")
+                    wdw = window_rets_full[cols].dropna(axis=0, how="all")
                     print(f"  Rows in clean window: {len(wdw)}")
                     
                     if len(wdw) >= min_obs:
