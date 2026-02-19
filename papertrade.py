@@ -94,6 +94,9 @@ def max_sharpe_weights(mu_ann: np.ndarray, cov_ann: np.ndarray, max_w: float = 0
     mu_ann = np.asarray(mu_ann, dtype=float)
     cov_ann = np.asarray(cov_ann, dtype=float) + np.eye(n) * 1e-8
     
+    print(f"  DEBUG: mu_ann range: [{np.min(mu_ann):.6f}, {np.max(mu_ann):.6f}]")
+    print(f"  DEBUG: cov_ann diagonal range: [{np.min(np.diag(cov_ann)):.6f}, {np.max(np.diag(cov_ann)):.6f}]")
+    
     w0 = np.full(n, 1.0 / n)
     w0 = np.minimum(w0, max_w)
     w0 = w0 / w0.sum()
@@ -110,10 +113,11 @@ def max_sharpe_weights(mu_ann: np.ndarray, cov_ann: np.ndarray, max_w: float = 0
     res = minimize(neg_sharpe, w0, method="SLSQP", bounds=bounds, constraints=cons,
                    options={"maxiter": 400, "ftol": 1e-9, "disp": False})
     
-    # Always use result if it exists, even if success flag is False
     w = res.x if res.x is not None else w0
     w = np.clip(w, 0.0, max_w)
     w = w / w.sum()
+    
+    print(f"  DEBUG: res.success={res.success}, res.fun={res.fun:.6f}")
     print(f"  Sharpe weights: max={np.max(w):.4f}, min={np.min(w):.4f}, zeros={np.sum(w < 1e-8)}")
     return w
 
