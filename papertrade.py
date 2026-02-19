@@ -187,6 +187,10 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                 
                 if len(cols) >= 10:
                     wdw = window_rets_full[cols].iloc[1:].dropna(axis=0, how="any")
+                    print(f"  DEBUG wdw shape: {wdw.shape}")
+                    print(f"  DEBUG wdw.mean(): {wdw.mean().values}")
+                    print(f"  DEBUG wdw.std(): {wdw.std().values}")
+                    print(f"  Rows in clean window: {len(wdw)}")
                     print(f"  Rows in clean window: {len(wdw)}")
                     
                     if len(wdw) >= min_obs:
