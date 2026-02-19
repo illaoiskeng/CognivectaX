@@ -242,12 +242,17 @@ def main():
     print(f"FX date range: {fx.index[0]} to {fx.index[-1]}")
     
     fx = fx.reindex(closes_usd.index).ffill()
-    # Broadcast fx (Series) across all columns
-    closes_dkk = closes_usd.div(1.0)  # Copy the dataframe
-    for col in closes_dkk.columns:
-        closes_dkk[col] = closes_usd[col] * fx.values
+    # Remove timezone info to ensure proper alignment
+    closes_usd.index = closes_usd.index.tz_localize(None)
+    fx.index = fx.index.tz_localize(None)
+    
+    # Multiply each column by the fx rate
+    closes_dkk = closes_usd.mul(fx, axis=0)
     
     print(f"closes_dkk sample (first 5 rows, first 3 cols):\n{closes_dkk.iloc[:5, :3]}")
+    print(f"closes_dkk NaN summary: {closes_dkk.isna().sum().sum()} NaNs out of {closes_dkk.size} total values")
+    
+    print(f"Closes DKK shape: {closes_dkk.shape}")
     print(f"closes_dkk NaN summary: {closes_dkk.isna().sum().sum()} NaNs out of {closes_dkk.size} total values")
     
     print(f"Closes DKK shape: {closes_dkk.shape}")
