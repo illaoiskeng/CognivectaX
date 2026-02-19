@@ -16,7 +16,7 @@ START_CAPITAL_DKK = 100_000
 INCEPTION_DATE = "2026-01-01"
 
 # ===== LOAD DATA =====
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=5, show_spinner=False)
 def load_weights(path: str) -> pd.DataFrame:
     """Load the latest portfolio weights (only selected stocks with meaningful weight)"""
     df = pd.read_csv(path)
@@ -30,7 +30,7 @@ def load_weights(path: str) -> pd.DataFrame:
         df["weight"] = df["weight"] / s
     return df.sort_values("weight", ascending=False)
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=5, show_spinner=False)
 def load_equity(path: str) -> pd.Series:
     """Load the daily equity curve"""
     df = pd.read_csv(path)
