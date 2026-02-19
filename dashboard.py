@@ -234,7 +234,13 @@ with c2:
     pie_df = weights.copy()
     w_target = pie_df.set_index("ticker")["weight"].astype(float)
 
-    common = live_last_dkk.index.intersection(last_daily_close_dkk.index).intersection(w_target.index)
+   common = live_last_dkk.index.intersection(last_daily_close_dkk.index).intersection(w_target.index)
+
+    # DEBUG
+    st.write(f"DEBUG: live_last_dkk length: {len(live_last_dkk)}")
+    st.write(f"DEBUG: last_daily_close_dkk length: {len(last_daily_close_dkk)}")
+    st.write(f"DEBUG: common length: {len(common)}")
+    
     drift = (live_last_dkk[common] / last_daily_close_dkk[common]).replace([np.inf, -np.inf], np.nan).fillna(1.0)
     w_live = (w_target[common] * drift).clip(lower=0.0)
     if float(w_live.sum()) > 0:
