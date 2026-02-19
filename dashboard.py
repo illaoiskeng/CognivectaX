@@ -23,19 +23,18 @@ view = st.sidebar.selectbox(
 )
 st.sidebar.caption("Horisont påvirker kun grafen.")
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=5)
 def load_weights(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
     df["ticker"] = df["ticker"].astype(str).str.upper()
     df["weight"] = df["weight"].astype(float)
-    # cleanup + renormalize
     df.loc[df["weight"] < 1e-8, "weight"] = 0.0
     s = float(df["weight"].sum())
     if s > 0:
         df["weight"] = df["weight"] / s
     return df
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=5)
 def load_equity(path: str) -> pd.Series:
     df = pd.read_csv(path)
     df["date"] = pd.to_datetime(df["date"])
