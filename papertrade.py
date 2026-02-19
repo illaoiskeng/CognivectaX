@@ -113,6 +113,8 @@ def max_sharpe_weights(mu_ann: np.ndarray, cov_ann: np.ndarray, max_w: float = 0
     w = res.x if res.success else w0
     w = np.clip(w, 0.0, max_w)
     w = w / w.sum()
+    
+    print(f"DEBUG max_sharpe: optimization success={res.success}, max_w={max(w):.6f}, min_w={min(w):.6f}")
     return w
 
 def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
