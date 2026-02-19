@@ -18,12 +18,12 @@ INCEPTION_DATE = "2026-01-01"
 # ===== LOAD DATA =====
 @st.cache_data(ttl=5)
 def load_weights(path: str) -> pd.DataFrame:
-    """Load the latest portfolio weights (only selected stocks with weight > 0)"""
+    """Load the latest portfolio weights (only selected stocks with meaningful weight)"""
     df = pd.read_csv(path)
     df["ticker"] = df["ticker"].astype(str).str.upper()
     df["weight"] = df["weight"].astype(float)
-    # Filter to only stocks with weight > 0
-    df = df[df["weight"] > 0].copy()
+    # Filter to only stocks with weight > 0.001 (ignore numerical noise)
+    df = df[df["weight"] > 0.001].copy()
     # Normalize weights to sum to 1.0
     s = float(df["weight"].sum())
     if s > 0:
