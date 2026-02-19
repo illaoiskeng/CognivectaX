@@ -171,7 +171,10 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                 
                 window_rets_full = window_prices.pct_change()
                 valid_cols = window_rets_full.count()
-                print(f"  Non-NaN counts per ticker (first 5): {valid_cols.head().to_dict()}")
+                print(f"  Window NaN counts (first 5): {window_prices.isna().sum().head().to_dict()}")
+                print(f"  Window non-NaN counts (first 5): {window_prices.count().head().to_dict()}")
+                print(f"  Returns NaN counts (first 5): {window_rets_full.isna().sum().head().to_dict()}")
+                print(f"  Valid returns per ticker (first 5): {valid_cols.head().to_dict()}")
                 cols = valid_cols[valid_cols >= min_obs].index.tolist()
                 print(f"  Eligible tickers: {len(cols)}")
                 
