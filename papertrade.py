@@ -190,6 +190,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                     print(f"  Rows in clean window: {len(wdw)}")
                     
                     if len(wdw) >= min_obs:
+                        print(f"  DEBUG wdw shape: {wdw.shape}, first 3 tickers mean returns: {wdw.iloc[:, :3].mean().values}")
                         mu_ann, cov_ann = estimate_mu_cov_ann(wdw)
                         w_new = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
                         
