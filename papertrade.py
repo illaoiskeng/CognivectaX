@@ -182,6 +182,9 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                 
                 window_rets_full = rets.iloc[loc - LOOKBACK:loc]
                 print(f"  Returns shape: {window_rets_full.shape}")
+                print(f"  DEBUG window_rets_full sample (rows 10-15, cols 0-5):\n{window_rets_full.iloc[10:15, :5]}")
+                print(f"  DEBUG window_rets_full.mean()[:5]: {window_rets_full.mean()[:5].values}")
+                print(f"  DEBUG window_rets_full.std()[:5]: {window_rets_full.std()[:5].values}")
                 print(f"  Returns NaN counts (first 5): {window_rets_full.isna().sum().head().to_dict()}")
                 valid_cols = window_rets_full.count()
                 print(f"  Valid returns per ticker (first 5): {valid_cols.head().to_dict()}")
