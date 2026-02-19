@@ -167,7 +167,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
         
         if is_day_after_month_end:
             print(f"\nRebalancing on {dt.date()} (month-end)")
-            loc = all_dates.get_loc(prev_dt)
+            loc = all_dates.get_loc(dt)
             print(f"  Location in index: {loc}, LOOKBACK: {LOOKBACK}")
             
             if loc >= LOOKBACK:
@@ -214,7 +214,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                         cols_current = cols
                         
                         for tkr, wt in zip(cols, w_new):
-                            weights_rows.append({"date": prev_dt.date(), "ticker": tkr, "target_weight": float(wt)})
+                            weights_rows.append({"date": dt.date(), "ticker": tkr, "target_weight": float(wt)})
                         
                         holdings = {tkr: equity * float(wt) for tkr, wt in zip(cols, w_new)}
                         
