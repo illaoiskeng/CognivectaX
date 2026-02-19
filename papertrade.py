@@ -125,6 +125,9 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
     closes_dkk = closes_dkk.sort_index()
     start_dt = pd.Timestamp(INCEPTION_DATE)
     rets = closes_dkk.pct_change(fill_method=None)  # ✅ FIX #1: Added fill_method=None
+    print(f"DEBUG rets shape: {rets.shape}")
+    print(f"DEBUG rets columns (first 5): {rets.columns.tolist()[:5]}")
+    print(f"DEBUG rets.iloc[100, :5]: {rets.iloc[100, :5].values}")
     all_dates = rets.index
     
     print(f"\n=== WALKFORWARD DEBUG ===")
