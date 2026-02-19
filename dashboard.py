@@ -140,6 +140,9 @@ def download_intraday_close_dkk(tickers, usd_to_dkk):
 w = weights.set_index("ticker")["weight"].reindex(prices_dkk.columns).fillna(0.0)
 
 live_last_dkk = download_live_last_prices_dkk(tickers, usd_to_dkk)
+st.write(f"DEBUG live_last_dkk: {live_last_dkk}")
+st.write(f"DEBUG live_last_dkk type: {type(live_last_dkk)}")
+st.write(f"DEBUG live_last_dkk length: {len(live_last_dkk)}")
 common = live_last_dkk.index.intersection(last_daily_close_dkk.index)
 
 if len(common) > 0:
