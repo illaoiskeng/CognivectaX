@@ -166,7 +166,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
             print(f"  Location in index: {loc}, LOOKBACK: {LOOKBACK}")
             
             if loc >= LOOKBACK:
-                window_prices = closes_dkk.loc[:prev_dt].tail(LOOKBACK + 1)
+                window_prices = closes_dkk.iloc[loc - LOOKBACK:loc + 1]
                 print(f"  Window shape: {window_prices.shape}, First date: {window_prices.index[0]}, Last date: {window_prices.index[-1]}")
                 
                 window_rets_full = window_prices.pct_change()
