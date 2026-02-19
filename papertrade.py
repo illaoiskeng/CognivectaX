@@ -15,7 +15,7 @@ OUT_WEIGHTS_LATEST = "data/weights_latest.csv"
 
 START_CAPITAL_DKK = 100_000
 DATA_START_DATE = "2023-01-01"
-INCEPTION_DATE = "2026-01-01"
+INCEPTION_DATE = "2026-02-19"  # ✅ Changed to today (Option B)
 
 LOOKBACK = 252
 MAX_W = 0.08
@@ -114,9 +114,6 @@ def max_sharpe_weights(mu_ann: np.ndarray, cov_ann: np.ndarray, max_w: float = 0
     mu_ann = np.asarray(mu_ann, dtype=float)
     cov_ann = np.asarray(cov_ann, dtype=float) + np.eye(n) * 1e-8
     
-    print(f"  DEBUG: mu_ann range: [{np.min(mu_ann):.6f}, {np.max(mu_ann):.6f}]")
-    print(f"  DEBUG: cov_ann diagonal range: [{np.min(np.diag(cov_ann)):.6f}, {np.max(np.diag(cov_ann)):.6f}]")
-    
     w0 = np.full(n, 1.0 / n)
     w0 = np.minimum(w0, max_w)
     w0 = w0 / w0.sum()
@@ -144,10 +141,8 @@ def max_sharpe_weights(mu_ann: np.ndarray, cov_ann: np.ndarray, max_w: float = 0
 def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
     closes_dkk = closes_dkk.sort_index()
     start_dt = pd.Timestamp(INCEPTION_DATE)
-    rets = closes_dkk.pct_change(fill_method=None)  # ✅ FIX #1: Added fill_method=None
+    rets = closes_dkk.pct_change(fill_method=None)
     print(f"DEBUG rets shape: {rets.shape}")
-    print(f"DEBUG rets columns (first 5): {rets.columns.tolist()[:5]}")
-    print(f"DEBUG rets.iloc[100, :5]: {rets.iloc[100, :5].values}")
     all_dates = rets.index
     
     print(f"\n=== WALKFORWARD DEBUG ===")
@@ -160,7 +155,6 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
     print(f"Month-end dates in dataset: {len(month_ends)}")
     print(f"Month-ends >= INCEPTION_DATE: {sum(1 for m in month_ends if m >= start_dt)}")
     if month_ends:
-        print(f"First 5 month-ends: {sorted(month_ends)[:5]}")
         print(f"Last 5 month-ends: {sorted(month_ends)[-5:]}")
     print(f"===\n")
     
@@ -168,58 +162,106 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
     eq_series = []
     eq_index = []
     
+    # Current active weights and holdings
     w_current = None
     cols_current = None
     holdings = {}
+    
+    # Pending weights (computed, waiting to be applied next trading day)
+    pending_w = None
+    pending_cols = None
+    pending_cost = 0.0
+    
     weights_rows = []
     min_obs = max(60, int(0.7 * LOOKBACK))
     fee = TURNOVER_COST_BPS / 10000.0
     started = False
+    inception_allocated = False
     
     for i, dt in enumerate(all_dates):
+        # Mark strategy start
         if not started and dt >= start_dt:
-            print(f"Starting at {dt}")
+            print(f"Strategy starts on {dt}")
             started = True
         if not started:
             continue
         
-        is_day_after_month_end = dt in month_ends
+        # ✅ STEP 2: Apply pending weights at the START of the day (t+1 activation)
+        if pending_w is not None:
+            print(f"  Activating pending weights on {dt.date()}")
+            equity *= (1.0 - pending_cost)
+            
+            w_current = pending_w
+            cols_current = pending_cols
+            
+            # Reset holdings to target allocation
+            holdings = {tkr: equity * float(wt) for tkr, wt in zip(cols_current, w_current)}
+            
+            # Log the activation
+            for tkr, wt in zip(cols_current, w_current):
+                if wt > 0.001:
+                    weights_rows.append({"date": dt.date(), "ticker": tkr, "target_weight": float(wt)})
+            
+            print(f"  Turnover cost applied: {pending_cost * 100:.4f}%")
+            print(f"  Portfolio now active with {len(cols_current)} stocks")
+            
+            pending_w = None
+            pending_cols = None
+            pending_cost = 0.0
         
-        if is_day_after_month_end:
-            print(f"\nRebalancing on {dt.date()} (month-end)")
+        # ✅ STEP 5: Implement Option B inception allocation (first day after inception)
+        if started and not inception_allocated and (w_current is None) and (pending_w is None):
+            print(f"\nOption B Inception Allocation on {dt.date()}")
             loc = all_dates.get_loc(dt)
-            print(f"  Location in index: {loc}, LOOKBACK: {LOOKBACK}")
+            inception_allocated = True
             
             if loc >= LOOKBACK:
-                window_prices = closes_dkk.iloc[loc - LOOKBACK:loc]  # ✅ FIX #3: Changed [loc - LOOKBACK:loc + 1] to [loc - LOOKBACK:loc]
-                print(f"  Window shape: {window_prices.shape}")
-                print(f"  Window NaN counts (first 5): {window_prices.isna().sum().head().to_dict()}")
-                print(f"  Window non-NaN counts (first 5): {window_prices.count().head().to_dict()}")
-                
                 window_rets_full = rets.iloc[loc - LOOKBACK:loc]
-                print(f"  Returns shape: {window_rets_full.shape}")
-                print(f"  DEBUG window_rets_full sample (rows 10-15, cols 0-5):\n{window_rets_full.iloc[10:15, :5]}")
-                print(f"  DEBUG window_rets_full.mean()[:5]: {window_rets_full.mean()[:5].values}")
-                print(f"  DEBUG window_rets_full.std()[:5]: {window_rets_full.std()[:5].values}")
-                print(f"  Returns NaN counts (first 5): {window_rets_full.isna().sum().head().to_dict()}")
                 valid_cols = window_rets_full.count()
-                print(f"  Valid returns per ticker (first 5): {valid_cols.head().to_dict()}")
                 cols = valid_cols[valid_cols >= min_obs].index.tolist()
+                
                 print(f"  Eligible tickers: {len(cols)}")
                 
                 if len(cols) >= 10:
-                    wdw = window_rets_full[cols].iloc[1:].dropna(axis=0, how="any")
-                    print(f"  DEBUG wdw shape: {wdw.shape}")
-                    print(f"  DEBUG wdw.mean(): {wdw.mean().values}")
-                    print(f"  DEBUG wdw.std(): {wdw.std().values}")
-                    print(f"  Rows in clean window: {len(wdw)}")
-                    
+                    wdw = window_rets_full[cols].dropna(axis=0, how="any")
+                    print(f"  Clean window rows: {len(wdw)}")
                     
                     if len(wdw) >= min_obs:
-                        print(f"  DEBUG wdw shape: {wdw.shape}, first 3 tickers mean returns: {wdw.iloc[:, :3].mean().values}")
                         mu_ann, cov_ann = estimate_mu_cov_ann(wdw)
                         w_new = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
                         
+                        # First allocation: turnover = 1.0
+                        pending_w = w_new
+                        pending_cols = cols
+                        pending_cost = 1.0 * fee
+                        
+                        print(f"  Inception weights computed, will activate tomorrow")
+                        print(f"  Turnover cost (first entry): {pending_cost * 100:.4f}%")
+        
+        # Rebalance on month-end dates (same logic, but set pending instead of current)
+        is_month_end = dt in month_ends
+        
+        if is_month_end:
+            print(f"\nRebalance decision on {dt.date()} (month-end)")
+            loc = all_dates.get_loc(dt)
+            
+            if loc >= LOOKBACK:
+                # Window ends at t-1 (yesterday), not today
+                window_rets_full = rets.iloc[loc - LOOKBACK:loc]
+                valid_cols = window_rets_full.count()
+                cols = valid_cols[valid_cols >= min_obs].index.tolist()
+                
+                print(f"  Eligible tickers: {len(cols)}")
+                
+                if len(cols) >= 10:
+                    wdw = window_rets_full[cols].dropna(axis=0, how="any")
+                    print(f"  Clean window rows: {len(wdw)}")
+                    
+                    if len(wdw) >= min_obs:
+                        mu_ann, cov_ann = estimate_mu_cov_ann(wdw)
+                        w_new = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
+                        
+                        # ✅ STEP 3: Compute turnover and SET PENDING (do NOT apply immediately)
                         if w_current is None:
                             turnover = 1.0
                         else:
@@ -227,23 +269,13 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                             turnover = float(np.sum(np.abs(w_new - old)))
                         
                         pending_cost = turnover * fee
-                        equity *= (1.0 - pending_cost)
-                        print(f"  Turnover: {turnover:.4f}, Cost: {pending_cost * 100:.4f}%")
+                        pending_w = w_new
+                        pending_cols = cols
                         
-                        w_current = w_new
-                        cols_current = cols
-                        
-                        for tkr, wt in zip(cols, w_new):
-                            if wt > 0.001:  # Only include meaningful weights
-                                weights_rows.append({"date": dt.date(), "ticker": tkr, "target_weight": float(wt)})
-                        
-                        holdings = {tkr: equity * float(wt) for tkr, wt in zip(cols, w_new)}
-                        
-                        print(f"  Portfolio rebalanced to target weights:")
-                        for tkr, holding_value in sorted(holdings.items(), key=lambda x: -x[1])[:5]:
-                            pct = (holding_value / equity) * 100
-                            print(f"    {tkr}: {holding_value:,.2f} DKK ({pct:.2f}%)")
+                        print(f"  Turnover: {turnover:.4f}, Cost (pending): {pending_cost * 100:.4f}%")
+                        print(f"  Weights will activate on next trading day")
         
+        # Apply daily returns if portfolio is active
         if w_current is None or cols_current is None or not holdings:
             eq_series.append(equity)
             eq_index.append(dt)
@@ -289,7 +321,6 @@ def main():
     
     print(f"Closes DKK shape: {closes_dkk.shape}")
     print(f"Closes DKK date range: {closes_dkk.index[0]} to {closes_dkk.index[-1]}")
-    print(f"closes_dkk sample (first 5 rows, first 3 cols):\n{closes_dkk.iloc[:5, :3]}")
     print(f"closes_dkk NaN count: {closes_dkk.isna().sum().sum()}")
     
     print(f"\nRunning walk-forward backtest from {INCEPTION_DATE}...\n")
@@ -307,7 +338,7 @@ def main():
         last_date = pd.to_datetime(w_hist["date"]).max()
         latest = w_hist[pd.to_datetime(w_hist["date"]) == last_date].copy()
         latest = latest.rename(columns={"target_weight": "weight"})[["ticker", "weight"]]
-        latest = latest[latest["weight"] > 0.0001].copy()  # Filter out numerical noise
+        latest = latest[latest["weight"] > 0.0001].copy()
         latest = latest.sort_values("weight", ascending=False)
         latest.to_csv(OUT_WEIGHTS_LATEST, index=False)
         print(f"Wrote: {OUT_WEIGHTS_LATEST}")
