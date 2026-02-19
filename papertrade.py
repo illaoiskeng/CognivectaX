@@ -295,7 +295,7 @@ def main():
         print(f"Wrote: {OUT_WEIGHTS_LATEST}")
         print(f"\nLatest rebalance date: {last_date.date()}")
         final_value = df_eq['total_value'].iloc[-1] if len(df_eq) > 0 else equity
-        print(f"Final portfolio value: {final_value:,.2f} DKK"
+        print(f"Final portfolio value: {final_value:,.2f} DKK")
         print(f"Initial capital: {START_CAPITAL_DKK:,.2f} DKK")
         print(f"Return: {((final_value / START_CAPITAL_DKK) - 1) * 100:.2f}%")
     else:
