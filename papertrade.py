@@ -234,7 +234,8 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                         cols_current = cols
                         
                         for tkr, wt in zip(cols, w_new):
-                            weights_rows.append({"date": dt.date(), "ticker": tkr, "target_weight": float(wt)})
+                            if wt > 0.001:  # Only include meaningful weights
+                                weights_rows.append({"date": dt.date(), "ticker": tkr, "target_weight": float(wt)})
                         
                         holdings = {tkr: equity * float(wt) for tkr, wt in zip(cols, w_new)}
                         
