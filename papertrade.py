@@ -163,11 +163,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
         if not started:
             continue
         
-        if i > 0:
-            prev_dt = all_dates[i - 1]
-            is_day_after_month_end = prev_dt in month_ends
-        else:
-            is_day_after_month_end = False
+        is_day_after_month_end = dt in month_ends
         
         if is_day_after_month_end:
             print(f"\nRebalancing on {dt.date()} (day after month-end {prev_dt.date()})")
