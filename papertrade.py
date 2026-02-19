@@ -242,14 +242,29 @@ def main():
     print(f"FX date range: {fx.index[0]} to {fx.index[-1]}")
     
     fx = fx.reindex(closes_usd.index).ffill()
+    print(f"\nDEBUG - Before timezone removal:")
+    print(f"  closes_usd.index[:3]: {closes_usd.index[:3]}")
+    print(f"  fx.index[:3]: {fx.index[:3]}")
+    print(f"  closes_usd.index[-3:]: {closes_usd.index[-3:]}")
+    print(f"  fx.index[-3:]: {fx.index[-3:]}")
+    
     # Remove timezone info to ensure proper alignment
     closes_usd.index = closes_usd.index.tz_localize(None)
     fx.index = fx.index.tz_localize(None)
     
+    print(f"\nDEBUG - After timezone removal:")
+    print(f"  closes_usd.index[:3]: {closes_usd.index[:3]}")
+    print(f"  fx.index[:3]: {fx.index[:3]}")
+    print(f"  closes_usd first value: {closes_usd.iloc[0, 0]}")
+    print(f"  fx first value: {fx.iloc[0]}")
+    
     # Multiply each column by the fx rate
     closes_dkk = closes_usd.mul(fx, axis=0)
     
-    print(f"closes_dkk sample (first 5 rows, first 3 cols):\n{closes_dkk.iloc[:5, :3]}")
+    print(f"\nclosses_dkk sample (first 5 rows, first 3 cols):\n{closes_dkk.iloc[:5, :3]}")
+    print(f"closes_dkk NaN summary: {closes_dkk.isna().sum().sum()} NaNs out of {closes_dkk.size} total values")
+    
+    print(f"Closes DKK shape: {closes_dkk.shape}")
     print(f"closes_dkk NaN summary: {closes_dkk.isna().sum().sum()} NaNs out of {closes_dkk.size} total values")
     
     print(f"Closes DKK shape: {closes_dkk.shape}")
