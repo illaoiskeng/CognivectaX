@@ -1,3 +1,5 @@
+print("🚀 PAPERTRADE VERSION 2 RUNNING")
+
 import os
 import math
 import numpy as np
