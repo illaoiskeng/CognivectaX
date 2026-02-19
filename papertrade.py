@@ -232,7 +232,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
             eq_index.append(dt)
             continue
         
-        r_today = rets.loc[dt].reindex(cols_current).values  # ✅ FIX #4: Removed .fillna(0.0)
+        r_today = rets.loc[dt].reindex(cols_current).fillna(0.0).values
         total_pnl = 0.0
         for j, tkr in enumerate(cols_current):
             if tkr in holdings:
@@ -294,9 +294,10 @@ def main():
         latest.to_csv(OUT_WEIGHTS_LATEST, index=False)
         print(f"Wrote: {OUT_WEIGHTS_LATEST}")
         print(f"\nLatest rebalance date: {last_date.date()}")
-        print(f"Final portfolio value: {eq.iloc[-1]:,.2f} DKK")
+        final_value = df_eq['total_value'].iloc[-1] if len(df_eq) > 0 else equity
+        print(f"Final portfolio value: {final_value:,.2f} DKK"
         print(f"Initial capital: {START_CAPITAL_DKK:,.2f} DKK")
-        print(f"Return: {((eq.iloc[-1] / START_CAPITAL_DKK) - 1) * 100:.2f}%")
+        print(f"Return: {((final_value / START_CAPITAL_DKK) - 1) * 100:.2f}%")
     else:
         print("WARNING: No rebalance weights produced yet (not enough data / dates).")
     print("\nDone.")
