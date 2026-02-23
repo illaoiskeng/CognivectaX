@@ -1,8 +1,3 @@
-Copilot said: # Redesigned Dashboard for CognivectaX Here's the updated
-Redesigned Dashboard for CognivectaX
-Here's the updated dashboard.py with a professional financial dashboard design like the images you showed:
-
-Python
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -131,7 +126,7 @@ st.markdown("""
 col_header_left, col_header_right = st.columns([2, 1])
 
 with col_header_left:
-    st.markdown(f"""
+    st.markdown("""
     <div class="metric-box">
         <div class="header-title">🚀 CognivectaX</div>
         <div class="header-subtitle">AI-Powered Portfolio Management</div>
