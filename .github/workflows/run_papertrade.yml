@@ -3,7 +3,8 @@ name: Run papertrade test
 on:
   workflow_dispatch:
   schedule:
-    - cron: '* 13-21 * * 1-5'
+    # Winter time (UTC+1): Run at 12:30-20:30 UTC = 13:30-21:30 CET (1:30 PM - 9:30 PM)
+    - cron: '* 12-20 * * 1-5'
 
 permissions:
   contents: write
