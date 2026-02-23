@@ -107,31 +107,6 @@ st.markdown("""
         font-size: 14px;
         color: #666;
     }
-    .time-button-container {
-        display: flex;
-        gap: 8px;
-        margin: 20px 0;
-        flex-wrap: wrap;
-    }
-    .time-button {
-        padding: 12px 16px;
-        border: 2px solid #ddd;
-        border-radius: 6px;
-        background-color: white;
-        cursor: pointer;
-        font-weight: 500;
-        font-size: 14px;
-        transition: all 0.3s ease;
-    }
-    .time-button:hover {
-        border-color: #1f77b4;
-        background-color: #f0f7ff;
-    }
-    .time-button.active {
-        background-color: #1f77b4;
-        color: white;
-        border-color: #1f77b4;
-    }
     .return-box {
         text-align: center;
         padding: 15px;
@@ -139,6 +114,20 @@ st.markdown("""
         background-color: #f9f9f9;
         border-left: 4px solid;
         margin-bottom: 10px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid #e0e0e0;
+    }
+    .return-box:hover {
+        background-color: #f0f7ff;
+        border: 2px solid #1f77b4;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(31, 119, 180, 0.2);
+    }
+    .return-box.active {
+        background-color: #e3f2fd;
+        border: 2px solid #1f77b4;
+        box-shadow: 0 4px 12px rgba(31, 119, 180, 0.3);
     }
     .return-label {
         font-size: 10px;
@@ -186,37 +175,20 @@ st.caption(f"Seneste opdatering: {pd.Timestamp.now(tz='Europe/Copenhagen').strft
 if "selected_time_period" not in st.session_state:
     st.session_state.selected_time_period = "1M"
 
-if "selected_interval" not in st.session_state:
-    st.session_state.selected_interval = None
-
 # Time period configuration
 time_periods = {
-    "1D": {"days": 1, "intervals": ["5min", "15min", "30min"], "x_format": "%H:%M"},
-    "1U": {"days": 7, "intervals": ["15min", "30min", "1H"], "x_format": "%a"},
-    "1M": {"days": 30, "intervals": ["1H", "4H", "1D"], "x_format": "%d"},
-    "3M": {"days": 90, "intervals": ["4H", "1D", "1W"], "x_format": "10d"},
-    "6M": {"days": 180, "intervals": ["4H", "1D", "1W"], "x_format": "15d"},
-    "1 ÅR": {"days": 365, "intervals": ["4H", "1D", "1W"], "x_format": "%b"},
+    "1D": {"days": 1, "intervals": ["5min", "15min", "30min"]},
+    "1U": {"days": 7, "intervals": ["15min", "30min", "1H"]},
+    "1M": {"days": 30, "intervals": ["1H", "4H", "1D"]},
+    "3M": {"days": 90, "intervals": ["4H", "1D", "1W"]},
+    "6M": {"days": 180, "intervals": ["4H", "1D", "1W"]},
+    "1 ÅR": {"days": 365, "intervals": ["4H", "1D", "1W"]},
 }
-
-# Interactive time period buttons
-time_cols = st.columns(7)
-for idx, (period, config) in enumerate(time_periods.items()):
-    with time_cols[idx]:
-        if st.button(
-            period,
-            key=f"btn_{period}",
-            use_container_width=True,
-            on_click=lambda p=period: st.session_state.update(selected_time_period=p)
-        ):
-            st.session_state.selected_time_period = period
 
 current_period = st.session_state.selected_time_period
 current_config = time_periods[current_period]
 
 # ===== EQUITY CURVE CHART WITH INTERVAL SELECTOR =====
-st.markdown("---")
-
 # Top right dropdown for interval selection
 col_chart_header, col_interval = st.columns([0.85, 0.15])
 
@@ -236,80 +208,86 @@ eq_plot = eq_plot[eq_plot.index >= cutoff]
 # Resample data based on selected interval
 eq_resampled = resample_data(eq_plot, selected_interval)
 
+# Remove NaN values that might appear from resampling
+eq_resampled = eq_resampled.dropna()
+
 eq_df = eq_resampled.to_frame("CognivectaX").reset_index()
 eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
 
-# Create professional chart
-fig = go.Figure()
+# Debug: Check if we have data
+if len(eq_df) == 0:
+    st.warning(f"No data for period {current_period} with interval {selected_interval}")
+else:
+    # Calculate y-axis range with padding at the top
+    min_value = eq_df["CognivectaX"].min()
+    max_value = eq_df["CognivectaX"].max()
+    value_range = max_value - min_value
+    
+    # Add 15% padding above the maximum value
+    y_max = max_value + (value_range * 0.15)
+    y_min = min_value - (value_range * 0.05)
+    
+    # Create professional chart
+    fig = go.Figure()
 
-fig.add_trace(go.Scatter(
-    x=eq_df["Date"],
-    y=eq_df["CognivectaX"],
-    fill='tozeroy',
-    name='CognivectaX',
-    line=dict(color='#1f77b4', width=2),
-    fillcolor='rgba(31, 119, 180, 0.15)',
-    hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<extra></extra>"
-))
+    fig.add_trace(go.Scatter(
+        x=eq_df["Date"],
+        y=eq_df["CognivectaX"],
+        fill='tozeroy',
+        name='CognivectaX',
+        mode='lines',
+        line=dict(color='#1f77b4', width=3),
+        fillcolor='rgba(31, 119, 180, 0.15)',
+        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<extra></extra>"
+    ))
 
-# Configure x-axis based on time period
-if current_period == "1D":
-    # Show every hour
-    tick_format = "%H:%M"
-    tick_interval = 3600  # seconds
-elif current_period == "1U":
-    # Show every day
-    tick_format = "%a"
-    tick_interval = "day"
-elif current_period == "1M":
-    # Show every 5 days
-    tick_format = "%d %b"
-    tick_interval = None
-elif current_period == "3M":
-    # Show every 10 days
-    tick_format = "%d %b"
-    tick_interval = None
-elif current_period == "6M":
-    # Show every 15 days
-    tick_format = "%d %b"
-    tick_interval = None
-else:  # 1 ÅR
-    # Show every month
-    tick_format = "%b"
-    tick_interval = None
+    # Configure x-axis based on time period
+    if current_period == "1D":
+        tick_format = "%H:%M"
+    elif current_period == "1U":
+        tick_format = "%a"
+    elif current_period == "1M":
+        tick_format = "%d %b"
+    elif current_period == "3M":
+        tick_format = "%d %b"
+    elif current_period == "6M":
+        tick_format = "%d %b"
+    else:  # 1 ÅR
+        tick_format = "%b"
 
-fig.update_layout(
-    title="",
-    xaxis_title="",
-    yaxis_title="Portfolio Værdi (DKK)",
-    hovermode='x unified',
-    template='plotly_white',
-    height=500,
-    margin=dict(l=50, r=50, t=20, b=50),
-    xaxis=dict(
-        gridcolor='#f0f0f0',
-        showgrid=True,
-        tickformat=tick_format,
-    ),
-    yaxis=dict(
-        gridcolor='#f0f0f0',
-        showgrid=True,
-        tickformat=',.0f',
+    fig.update_layout(
+        title="",
+        xaxis_title="",
+        yaxis_title="Portfolio Værdi (DKK)",
+        hovermode='x unified',
+        template='plotly_white',
+        height=500,
+        margin=dict(l=50, r=50, t=20, b=50),
+        xaxis=dict(
+            gridcolor='#f0f0f0',
+            showgrid=True,
+            tickformat=tick_format,
+        ),
+        yaxis=dict(
+            gridcolor='#f0f0f0',
+            showgrid=True,
+            tickformat=',.0f',
+            range=[y_min, y_max]
+        )
     )
-)
 
-st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
-# ===== RETURNS METRICS ROW (Professional Style) =====
+# ===== CLICKABLE RETURNS METRICS ROW (Bottom, like the image) =====
 st.markdown("---")
 
 returns_data = [
-    ("1d", ret_1d),
-    ("1u", ret_1w),
-    ("1m", ret_1m),
-    ("3m", ret_3m),
-    ("6m", ret_6m),
-    ("1 år", ret_12m),
+    ("1D", ret_1d),
+    ("1U", ret_1w),
+    ("1M", ret_1m),
+    ("3M", ret_3m),
+    ("6M", ret_6m),
+    ("1 ÅR", ret_12m),
     ("max", inception_return)
 ]
 
@@ -317,6 +295,10 @@ ret_cols = st.columns(7)
 
 for col, (label, ret) in zip(ret_cols, returns_data):
     with col:
+        # Check if this button is active
+        is_active = st.session_state.selected_time_period == label
+        active_class = "active" if is_active else ""
+        
         if np.isnan(ret):
             display_ret = "N/A"
             color = "#999999"
@@ -324,8 +306,18 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             display_ret = f"{get_return_sign(ret)}{ret*100:.2f}%"
             color = get_return_color(ret)
         
+        # Create clickable box
+        if st.button(
+            f"{display_ret}",
+            key=f"ret_btn_{label}",
+            use_container_width=True,
+            on_click=lambda l=label: st.session_state.update(selected_time_period=l)
+        ):
+            st.session_state.selected_time_period = label
+        
+        # Display the return box with styling
         st.markdown(f"""
-        <div class="return-box" style="border-left-color: {color};">
+        <div class="return-box {active_class}" style="border-left-color: {color};">
             <div class="return-label">{label}</div>
             <div class="return-value" style="color: {color};">{display_ret}</div>
         </div>
