@@ -33,12 +33,30 @@ def load_weights(path: str) -> pd.DataFrame:
 def load_equity(path: str) -> pd.Series:
     """Load the daily equity curve"""
     df = pd.read_csv(path)
-    # Try to parse as datetime - handles both daily and intraday
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
     eq = pd.Series(df["total_value"].values, index=df["date"], name="equity")
     eq = eq[eq.index >= pd.Timestamp(INCEPTION_DATE)]
     return eq
+
+def is_market_hours(timestamp: pd.Timestamp) -> bool:
+    """Check if timestamp is within US market hours (9:30 AM - 4:00 PM EST)"""
+    # Convert to EST (UTC-5, or UTC-4 during daylight saving)
+    ts_est = timestamp.tz_localize('UTC').tz_convert('US/Eastern')
+    
+    # Market hours: 9:30 AM to 4:00 PM on weekdays
+    time_only = ts_est.time()
+    weekday = ts_est.weekday()
+    
+    # Weekday 0-4 = Monday-Friday
+    if weekday > 4:  # Saturday, Sunday
+        return False
+    
+    # 9:30 AM to 4:00 PM
+    market_open = datetime.strptime("09:30", "%H:%M").time()
+    market_close = datetime.strptime("16:00", "%H:%M").time()
+    
+    return market_open <= time_only < market_close
 
 # Load data
 try:
@@ -89,6 +107,16 @@ def calculate_return_at_point(equity_value: float, start_value: float) -> float:
     if start_value == 0:
         return 0
     return (equity_value / start_value - 1.0) * 100
+
+def filter_market_hours(data: pd.Series) -> pd.Series:
+    """Filter data to only include US market hours"""
+    # Make index timezone-aware UTC first
+    if data.index.tz is None:
+        data.index = data.index.tz_localize('UTC')
+    
+    # Filter to market hours only
+    market_data = data[data.index.map(is_market_hours)]
+    return market_data
 
 def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
     """Generate appropriate tick positions and format based on period"""
@@ -309,8 +337,11 @@ if current_config["days"] is not None:
     cutoff = rounded_now - timedelta(days=current_config["days"])
     eq_plot = eq_plot[eq_plot.index >= cutoff]
 
+# Filter to market hours only
+eq_plot_filtered = filter_market_hours(eq_plot)
+
 # Resample data based on selected interval
-eq_resampled = resample_data(eq_plot, selected_interval)
+eq_resampled = resample_data(eq_plot_filtered, selected_interval)
 
 # Remove NaN values
 eq_resampled = eq_resampled.dropna()
