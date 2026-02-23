@@ -113,11 +113,11 @@ def resample_data(data: pd.Series, interval: str) -> pd.Series:
         # If resample fails, return original data
         return data
 
-def calculate_return_at_point(equity_value: float, start_value: float) -> float:
-    """Calculate return percentage at a point"""
-    if start_value == 0:
+def calculate_return_from_now(equity_value: float, current_value: float) -> float:
+    """Calculate return percentage from a point to now"""
+    if current_value == 0 or equity_value == 0:
         return 0
-    return (equity_value / start_value - 1.0) * 100
+    return (current_value / equity_value - 1.0) * 100
 
 def filter_market_hours(data: pd.Series, period: str) -> pd.Series:
     """Filter data to only include US market hours (only for intraday periods)"""
@@ -191,6 +191,7 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
         return sorted(tick_positions), tick_format
 
 current_value = float(equity_dkk.iloc[-1])
+current_time = pd.Timestamp.now()
 inception_return = (current_value / START_CAPITAL_DKK - 1.0)
 
 ret_1d = get_return(1)
@@ -344,7 +345,6 @@ with col_interval:
     )
 
 # Get current time rounded to nearest hour
-current_time = pd.Timestamp.now()
 rounded_now = current_time.replace(minute=0, second=0, microsecond=0)
 
 # Prepare data based on selected time period
@@ -366,16 +366,15 @@ eq_resampled = eq_resampled.dropna()
 eq_df = eq_resampled.to_frame("CognivectaX").reset_index()
 eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
 
-# Calculate return at each point from the START of the period
+# Calculate return from EACH point to NOW (current_value)
 if len(eq_df) > 0:
-    start_value = eq_df["CognivectaX"].iloc[0]
-    eq_df["Return %"] = eq_df["CognivectaX"].apply(
-        lambda x: calculate_return_at_point(x, start_value)
+    eq_df["Change %"] = eq_df["CognivectaX"].apply(
+        lambda x: calculate_return_from_now(x, current_value)
     )
-    # Format return percentage as string for hover
-    eq_df["Return Text"] = eq_df["Return %"].apply(lambda x: f"{x:+.2f}")
+    # Format change percentage as string for hover
+    eq_df["Change Text"] = eq_df["Change %"].apply(lambda x: f"{x:+.2f}")
 else:
-    start_value = 0
+    pass
 
 # Check if we have data
 if len(eq_df) == 0:
@@ -403,8 +402,8 @@ else:
         mode='lines',
         line=dict(color='#1f77b4', width=3),
         fillcolor='rgba(31, 119, 180, 0.15)',
-        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<br>Gain: %{text}%<extra></extra>",
-        text=eq_df["Return Text"]
+        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<br>Change till now: %{text}%<extra></extra>",
+        text=eq_df["Change Text"]
     ))
 
     fig.update_layout(
@@ -552,12 +551,5 @@ with st.expander("🔧 Debug Info"):
         st.write(f"**Equity curve længde:** {len(equity_dkk)}")
         st.write(f"**Dato interval:** {equity_dkk.index[0]} til {equity_dkk.index[-1]}")
         st.write(f"**Valgt periode:** {current_period}")
-        st.write(f"**Valgt interval:** {selected_interval}")
-    
-    with col_debug2:
-        st.write(f"**Antal beholdinger:** {len(weights)}")
-        st.write(f"**Data points på chart:** {len(eq_df)}")
-        if start_value > 0:
-            st.write(f"**Start værdi (period):** {start_value:,.0f} kr")
-        st.write(f"**Aktuel værdi:** {current_value:,.0f} kr")
-        st.write(f"**Tick positions:** {len(tick_positions)}")
+        st.write(f"
+
