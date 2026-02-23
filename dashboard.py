@@ -426,6 +426,40 @@ else:
     st.plotly_chart(fig, use_container_width=True)
 
 # ===== CLICKABLE RETURNS METRICS ROW (Bottom) =====
+st.markdown("""
+<style>
+    .return-button {
+        width: 100%;
+        padding: 15px 10px;
+        border-radius: 8px;
+        border: 2px solid #e0e0e0;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        text-align: center;
+    }
+    
+    .return-button:hover {
+        background-color: #f0f7ff !important;
+        border: 2px solid #1f77b4 !important;
+        box-shadow: 0 4px 8px rgba(31, 119, 180, 0.2) !important;
+    }
+    
+    .return-label {
+        font-size: 16px;
+        font-weight: 900;
+        color: #000000;
+        margin-bottom: 8px;
+    }
+    
+    .return-value {
+        font-size: 18px;
+        font-weight: bold;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown("---")
 
 returns_data = [
@@ -449,13 +483,19 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             color = "#999999"
         else:
             display_ret = f"{get_return_sign(ret)}{ret*100:.2f}%"
-            color = get_return_color(ret)
+            if ret >= 0:
+                color = "#00AA00"
+            else:
+                color = "#FF4444"
         
-        # Create button with label and return value
-        button_label = f"{label}\n{display_ret}"
+        # Create the button label with HTML styling
+        button_html = f"""
+        <div class="return-label">{label}</div>
+        <div class="return-value" style="color: {color};">{display_ret}</div>
+        """
         
         if st.button(
-            button_label,
+            button_html,
             key=f"ret_btn_{label}",
             use_container_width=True,
             help=f"Click to view {label} period"
