@@ -102,11 +102,15 @@ def get_return_sign(ret: float) -> str:
     return "+" if ret >= 0 else ""
 
 def resample_data(data: pd.Series, interval: str) -> pd.Series:
-    """Resample data to specified interval"""
+    """Resample data to specified interval, with fallback"""
     try:
-        return data.resample(interval).last()
-    except Exception as e:
-        st.warning(f"Cannot resample to {interval}: {str(e)}")
+        resampled = data.resample(interval).last()
+        # If resampling resulted in empty data, return original
+        if len(resampled) == 0:
+            return data
+        return resampled
+    except Exception:
+        # If resample fails, return original data
         return data
 
 def calculate_return_at_point(equity_value: float, start_value: float) -> float:
@@ -119,6 +123,9 @@ def filter_market_hours(data: pd.Series) -> pd.Series:
     """Filter data to only include US market hours"""
     # Apply market hours filter
     market_data = data[data.index.map(is_market_hours)]
+    # If filtering resulted in empty data, return original (for daily data)
+    if len(market_data) == 0:
+        return data
     return market_data
 
 def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
@@ -130,6 +137,9 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
         tick_format = "%H:%M"
         tick_positions = pd.to_datetime(dates).floor('H').unique()
         tick_positions = sorted(tick_positions)
+        # Fallback: if no hourly data, show all points
+        if len(tick_positions) == 0:
+            tick_positions = pd.to_datetime(dates).unique()
         return tick_positions, tick_format
     
     elif period == "1U":
@@ -340,10 +350,10 @@ if current_config["days"] is not None:
     cutoff = rounded_now - timedelta(days=current_config["days"])
     eq_plot = eq_plot[eq_plot.index >= cutoff]
 
-# Filter to market hours only
+# Filter to market hours only (with fallback for daily data)
 eq_plot_filtered = filter_market_hours(eq_plot)
 
-# Resample data based on selected interval
+# Resample data based on selected interval (with fallback)
 eq_resampled = resample_data(eq_plot_filtered, selected_interval)
 
 # Remove NaN values
@@ -363,7 +373,7 @@ else:
 
 # Check if we have data
 if len(eq_df) == 0:
-    st.warning(f"No data for period {current_period} with interval {selected_interval}. Try a different interval.")
+    st.warning(f"No data available for period {current_period}.")
 else:
     # Calculate y-axis range with padding
     min_value = eq_df["CognivectaX"].min()
