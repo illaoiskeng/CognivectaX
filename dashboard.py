@@ -463,7 +463,7 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             border-radius: 8px;
             border: 2px solid #e0e0e0;
             text-align: center;
-            margin-top: -42px;
+            margin-top: -38px;
             position: relative;
             z-index: 1;
             pointer-events: none;
