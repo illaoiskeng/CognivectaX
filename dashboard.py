@@ -238,38 +238,6 @@ st.markdown("""
         font-size: 14px;
         color: #666;
     }
-    .return-box {
-        text-align: center;
-        padding: 15px;
-        border-radius: 8px;
-        background-color: #f9f9f9;
-        border-left: 4px solid;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        border: 2px solid #e0e0e0;
-    }
-    .return-box:hover {
-        background-color: #f0f7ff;
-        border: 2px solid #1f77b4;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(31, 119, 180, 0.2);
-    }
-    .return-box.active {
-        background-color: #e3f2fd;
-        border: 2px solid #1f77b4;
-        box-shadow: 0 4px 12px rgba(31, 119, 180, 0.3);
-    }
-    .return-label {
-        font-size: 10px;
-        color: #666;
-        margin-bottom: 5px;
-        text-transform: uppercase;
-        font-weight: bold;
-    }
-    .return-value {
-        font-size: 18px;
-        font-weight: bold;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -483,21 +451,17 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             display_ret = f"{get_return_sign(ret)}{ret*100:.2f}%"
             color = get_return_color(ret)
         
+        # Create button with label and return value
+        button_label = f"{label}\n{display_ret}"
+        
         if st.button(
-            label,
+            button_label,
             key=f"ret_btn_{label}",
-            use_container_width=True
+            use_container_width=True,
+            help=f"Click to view {label} period"
         ):
             st.session_state.selected_time_period = label
             st.rerun()
-        
-        active_class = "active" if is_active else ""
-        st.markdown(f"""
-        <div class="return-box {active_class}" style="border-left-color: {color}; margin-top: -40px;">
-            <div class="return-label">{label}</div>
-            <div class="return-value" style="color: {color};">{display_ret}</div>
-        </div>
-        """, unsafe_allow_html=True)
 
 # ===== MAIN CONTENT AREA =====
 st.markdown("---")
