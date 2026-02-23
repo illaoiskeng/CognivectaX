@@ -428,6 +428,21 @@ else:
 # ===== CLICKABLE RETURNS METRICS ROW (Bottom) =====
 st.markdown("---")
 
+st.markdown("""
+<script>
+function selectPeriod(period) {
+    // Find the button and click it
+    const buttons = document.querySelectorAll('button');
+    for (let btn of buttons) {
+        if (btn.getAttribute('data-testid') && btn.getAttribute('data-testid').includes('ret_btn_' + period)) {
+            btn.click();
+            break;
+        }
+    }
+}
+</script>
+""", unsafe_allow_html=True)
+
 returns_data = [
     ("1D", ret_1d),
     ("1U", ret_1w),
@@ -452,10 +467,32 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             else:
                 color = "#FF4444"
         
-        # Just use regular button with custom label
-        if st.button(f"{label}\n{display_ret}", key=f"ret_btn_{label}", use_container_width=True):
+        # Styled display box
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 15px 10px;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 8px;
+        " onmouseover="this.style.backgroundColor='#f0f7ff'; this.style.border='2px solid #1f77b4'; this.style.boxShadow='0 4px 8px rgba(31, 119, 180, 0.2)';" onmouseout="this.style.backgroundColor=''; this.style.border='2px solid #e0e0e0'; this.style.boxShadow='none';" onclick="selectPeriod('{label}')">
+            <div style="font-size: 16px; font-weight: 900; color: #000000; margin-bottom: 8px;">
+                {label}
+            </div>
+            <div style="font-size: 18px; font-weight: bold; color: {color};">
+                {display_ret}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Hidden button
+        if st.button(" ", key=f"ret_btn_{label}", use_container_width=True, help=f"Select {label}"):
             st.session_state.selected_time_period = label
             st.rerun()
+
 
 # ===== MAIN CONTENT AREA =====
 st.markdown("---")
