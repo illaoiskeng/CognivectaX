@@ -551,4 +551,10 @@ with st.expander("🔧 Debug Info"):
         st.write(f"**Equity curve længde:** {len(equity_dkk)}")
         st.write(f"**Dato interval:** {equity_dkk.index[0]} til {equity_dkk.index[-1]}")
         st.write(f"**Valgt periode:** {current_period}")
-        st.write(f"
+        st.write(f"**Valgt interval:** {selected_interval}")
+    
+    with col_debug2:
+        st.write(f"**Antal beholdinger:** {len(weights)}")
+        st.write(f"**Data points på chart:** {len(eq_df)}")
+        st.write(f"**Aktuel værdi (now):** {current_value:,.0f} kr")
+        st.write(f"**Tick positions:** {len(tick_positions)}")
