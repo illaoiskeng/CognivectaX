@@ -5,7 +5,7 @@ import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 st.set_page_config(layout="wide")
 st_autorefresh(interval=5000, key="cognivectax_refresh_5s")
@@ -82,6 +82,73 @@ def resample_data(data: pd.Series, interval: str) -> pd.Series:
 def calculate_return_at_point(equity_series: pd.Series, start_value: float) -> pd.Series:
     """Calculate return percentage at each point"""
     return (equity_series / start_value - 1.0) * 100
+
+def get_cutoff_time(current_time: datetime, days_back: int) -> datetime:
+    """Get cutoff time rounded to nearest full hour, days_back in the past"""
+    # Round current time to nearest full hour (floor)
+    rounded_now = current_time.replace(minute=0, second=0, microsecond=0)
+    # Go back N days from rounded hour
+    cutoff = rounded_now - timedelta(days=days_back)
+    return cutoff
+
+def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
+    """Generate appropriate tick positions and format based on period"""
+    dates = data_df["Date"].values
+    
+    if period == "1D":
+        # Show every hour (hourly ticks)
+        tick_format = "%H:%M"
+        # Get unique hours
+        tick_positions = pd.to_datetime(dates).floor('H').unique()
+        tick_positions = sorted(tick_positions)
+        return tick_positions, tick_format
+    
+    elif period == "1U":
+        # Show every day
+        tick_format = "%d. %b"
+        tick_positions = pd.to_datetime(dates).floor('D').unique()
+        tick_positions = sorted(tick_positions)
+        return tick_positions, tick_format
+    
+    elif period == "1M":
+        # Show every 5 days
+        tick_format = "%d. %b"
+        tick_positions = pd.to_datetime(dates).floor('D').unique()
+        tick_positions = sorted(tick_positions)
+        # Filter to every 5 days
+        tick_positions = [t for i, t in enumerate(tick_positions) if i % 5 == 0]
+        if len(tick_positions) > 0 and tick_positions[-1] != pd.to_datetime(dates[-1]).floor('D'):
+            tick_positions.append(pd.to_datetime(dates[-1]).floor('D'))
+        return tick_positions, tick_format
+    
+    elif period == "3M":
+        # Show every 10 days
+        tick_format = "%d. %b"
+        tick_positions = pd.to_datetime(dates).floor('D').unique()
+        tick_positions = sorted(tick_positions)
+        # Filter to every 10 days
+        tick_positions = [t for i, t in enumerate(tick_positions) if i % 10 == 0]
+        if len(tick_positions) > 0 and tick_positions[-1] != pd.to_datetime(dates[-1]).floor('D'):
+            tick_positions.append(pd.to_datetime(dates[-1]).floor('D'))
+        return tick_positions, tick_format
+    
+    elif period == "6M":
+        # Show every 15 days
+        tick_format = "%d. %b"
+        tick_positions = pd.to_datetime(dates).floor('D').unique()
+        tick_positions = sorted(tick_positions)
+        # Filter to every 15 days
+        tick_positions = [t for i, t in enumerate(tick_positions) if i % 15 == 0]
+        if len(tick_positions) > 0 and tick_positions[-1] != pd.to_datetime(dates[-1]).floor('D'):
+            tick_positions.append(pd.to_datetime(dates[-1]).floor('D'))
+        return tick_positions, tick_format
+    
+    else:  # 1 ÅR or max
+        # Show every month
+        tick_format = "%b %Y"
+        tick_positions = pd.to_datetime(dates).to_period('M').unique()
+        tick_positions = [p.to_timestamp() for p in tick_positions]
+        return sorted(tick_positions), tick_format
 
 current_value = float(equity_dkk.iloc[-1])
 inception_return = (current_value / START_CAPITAL_DKK - 1.0)
@@ -178,56 +245,42 @@ st.caption(f"Seneste opdatering: {pd.Timestamp.now(tz='Europe/Copenhagen').strft
 if "selected_time_period" not in st.session_state:
     st.session_state.selected_time_period = "1M"
 
-# Time period configuration with proper x-axis settings
+# Time period configuration
 time_periods = {
     "1D": {
         "days": 1,
         "intervals": ["5min", "15min", "30min"],
-        "tick_format": "%H:%M",
-        "tick_interval": None,
-        "description": "24 hours - Show whole hours"
+        "description": "24 hours"
     },
     "1U": {
         "days": 7,
         "intervals": ["15min", "30min", "1H"],
-        "tick_format": "%d. %b",
-        "tick_interval": "day",
-        "description": "7 days - Show whole days"
+        "description": "7 days"
     },
     "1M": {
         "days": 30,
         "intervals": ["1H", "4H", "1D"],
-        "tick_format": "%d. %b",
-        "tick_interval": None,
-        "description": "1 month - Show every 5 days"
+        "description": "30 days"
     },
     "3M": {
         "days": 90,
         "intervals": ["4H", "1D", "1W"],
-        "tick_format": "%d. %b",
-        "tick_interval": None,
-        "description": "3 months - Show every 10 days"
+        "description": "90 days"
     },
     "6M": {
         "days": 180,
         "intervals": ["4H", "1D", "1W"],
-        "tick_format": "%d. %b",
-        "tick_interval": None,
-        "description": "6 months - Show every 15 days"
+        "description": "180 days"
     },
     "1 ÅR": {
         "days": 365,
         "intervals": ["4H", "1D", "1W"],
-        "tick_format": "%b %Y",
-        "tick_interval": None,
-        "description": "12 months - Show every month"
+        "description": "365 days"
     },
     "max": {
         "days": None,
         "intervals": ["1D", "1W", "1M"],
-        "tick_format": "%b %Y",
-        "tick_interval": None,
-        "description": "All data - Show every month"
+        "description": "All data"
     },
 }
 
@@ -241,7 +294,6 @@ if current_period not in time_periods:
 current_config = time_periods[current_period]
 
 # ===== EQUITY CURVE CHART WITH INTERVAL SELECTOR =====
-# Top right dropdown for interval selection
 col_chart_header, col_interval = st.columns([0.85, 0.15])
 
 with col_interval:
@@ -252,12 +304,20 @@ with col_interval:
         label_visibility="collapsed"
     )
 
+# Get current time rounded to nearest hour
+current_time = pd.Timestamp.now(tz='Europe/Copenhagen')
+rounded_now = current_time.replace(minute=0, second=0, microsecond=0)
+
 # Prepare data based on selected time period
 eq_plot = equity_dkk.copy()
 
 if current_config["days"] is not None:
-    cutoff = eq_plot.index.max() - timedelta(days=current_config["days"])
+    # Calculate cutoff: go back N days from the rounded current hour
+    cutoff = rounded_now - timedelta(days=current_config["days"])
     eq_plot = eq_plot[eq_plot.index >= cutoff]
+else:
+    # For 'max', use all data
+    pass
 
 # Resample data based on selected interval
 eq_resampled = resample_data(eq_plot, selected_interval)
@@ -285,6 +345,9 @@ else:
     y_max = max_value + (value_range * 0.15)
     y_min = min_value - (value_range * 0.05)
     
+    # Generate tick positions
+    tick_positions, tick_format = generate_tick_positions(eq_df, current_period)
+    
     # Create professional chart
     fig = go.Figure()
 
@@ -300,32 +363,6 @@ else:
         customdata=eq_df["Return %"]
     ))
 
-    # Configure x-axis ticks based on time period
-    if current_period == "1D":
-        # Show every hour
-        dticks = 3600000  # milliseconds for 1 hour
-        tick_format = "%H:%M"
-    elif current_period == "1U":
-        # Show every day
-        dticks = "D"
-        tick_format = "%d. %b"
-    elif current_period == "1M":
-        # Show every 5 days
-        dticks = 5 * 24 * 3600000  # 5 days in milliseconds
-        tick_format = "%d. %b"
-    elif current_period == "3M":
-        # Show every 10 days
-        dticks = 10 * 24 * 3600000  # 10 days in milliseconds
-        tick_format = "%d. %b"
-    elif current_period == "6M":
-        # Show every 15 days
-        dticks = 15 * 24 * 3600000  # 15 days in milliseconds
-        tick_format = "%d. %b"
-    else:  # 1 ÅR or max
-        # Show every month
-        dticks = "M"
-        tick_format = "%b %Y"
-
     fig.update_layout(
         title="",
         xaxis_title="",
@@ -338,8 +375,9 @@ else:
             gridcolor='#f0f0f0',
             showgrid=True,
             tickformat=tick_format,
-            dtick=dticks,
-            tickmode='auto',
+            tickvals=tick_positions,
+            ticktext=[t.strftime(tick_format) if isinstance(t, pd.Timestamp) else str(t) for t in tick_positions],
+            tickmode='array',
         ),
         yaxis=dict(
             gridcolor='#f0f0f0',
@@ -477,9 +515,11 @@ with st.expander("🔧 Debug Info"):
         st.write(f"**Dato interval:** {equity_dkk.index[0].date()} til {equity_dkk.index[-1].date()}")
         st.write(f"**Valgt periode:** {current_period}")
         st.write(f"**Valgt interval:** {selected_interval}")
+        st.write(f"**Nuværende tid (afrundet):** {rounded_now}")
     
     with col_debug2:
         st.write(f"**Antal beholdinger:** {len(weights)}")
         st.write(f"**Vægt sum:** {weights['weight'].sum():.4f}")
         st.write(f"**Data points på chart:** {len(eq_df)}")
         st.write(f"**Start værdi:** {start_value:,.0f} kr")
+        st.write(f"**Tick positions:** {len(tick_positions)} ticks")
