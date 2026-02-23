@@ -426,40 +426,6 @@ else:
     st.plotly_chart(fig, use_container_width=True)
 
 # ===== CLICKABLE RETURNS METRICS ROW (Bottom) =====
-st.markdown("""
-<style>
-    .return-button {
-        width: 100%;
-        padding: 15px 10px;
-        border-radius: 8px;
-        border: 2px solid #e0e0e0;
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        cursor: pointer;
-        transition: all 0.3s ease;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        text-align: center;
-    }
-    
-    .return-button:hover {
-        background-color: #f0f7ff !important;
-        border: 2px solid #1f77b4 !important;
-        box-shadow: 0 4px 8px rgba(31, 119, 180, 0.2) !important;
-    }
-    
-    .return-label {
-        font-size: 16px;
-        font-weight: 900;
-        color: #000000;
-        margin-bottom: 8px;
-    }
-    
-    .return-value {
-        font-size: 18px;
-        font-weight: bold;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 st.markdown("---")
 
 returns_data = [
@@ -476,8 +442,6 @@ ret_cols = st.columns(7)
 
 for col, (label, ret) in zip(ret_cols, returns_data):
     with col:
-        is_active = st.session_state.selected_time_period == label
-        
         if np.isnan(ret):
             display_ret = "N/A"
             color = "#999999"
@@ -488,18 +452,26 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             else:
                 color = "#FF4444"
         
-        # Create the button label with HTML styling
-        button_html = f"""
-        <div class="return-label">{label}</div>
-        <div class="return-value" style="color: {color};">{display_ret}</div>
-        """
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 15px 10px;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        " onclick="alert('clicked')">
+            <div style="font-size: 16px; font-weight: 900; color: #000000; margin-bottom: 8px;">
+                {label}
+            </div>
+            <div style="font-size: 18px; font-weight: bold; color: {color};">
+                {display_ret}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        if st.button(
-            button_html,
-            key=f"ret_btn_{label}",
-            use_container_width=True,
-            help=f"Click to view {label} period"
-        ):
+        if st.button("Select", key=f"ret_btn_{label}", label_visibility="collapsed", use_container_width=True):
             st.session_state.selected_time_period = label
             st.rerun()
 
