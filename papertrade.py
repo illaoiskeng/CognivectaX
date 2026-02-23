@@ -15,7 +15,7 @@ OUT_WEIGHTS_LATEST = "data/weights_latest.csv"
 
 START_CAPITAL_DKK = 100_000
 DATA_START_DATE = "2023-01-01"
-INCEPTION_DATE = "2026-02-19"  # ✅ Changed to today (Option B)
+INCEPTION_DATE = "2026-02-19"
 
 LOOKBACK = 252
 MAX_W = 0.08
@@ -84,17 +84,14 @@ def month_end_trade_dates(index_dt: pd.DatetimeIndex) -> pd.DatetimeIndex:
     last_dates = pd.DatetimeIndex(pd.to_datetime(last)).sort_values().unique()
     
     # Filter to only include dates where the next trading day is in a different month
-    # (ensures we don't include mid-month dates that happen to be the last in the dataset)
     month_ends = []
     for dt in last_dates:
-        # Find the next trading day
         idx = index_dt.get_loc(dt)
         if idx < len(index_dt) - 1:
             next_dt = index_dt[idx + 1]
             if next_dt.month != dt.month:
                 month_ends.append(dt)
         else:
-            # Last date in dataset - only include if it's actually a month boundary
             if idx > 0:
                 prev_dt = index_dt[idx - 1]
                 if prev_dt.month != dt.month:
@@ -162,15 +159,9 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
     eq_series = []
     eq_index = []
     
-    # Current active weights and holdings
     w_current = None
     cols_current = None
     holdings = {}
-    
-    # Pending weights (computed, waiting to be applied next trading day)
-    pending_w = None
-    pending_cols = None
-    pending_cost = 0.0
     
     weights_rows = []
     min_obs = max(60, int(0.7 * LOOKBACK))
@@ -186,36 +177,14 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
         if not started:
             continue
         
-        # ✅ STEP 2: Apply pending weights at the START of the day (t+1 activation)
-        if pending_w is not None:
-            print(f"  Activating pending weights on {dt.date()}")
-            equity *= (1.0 - pending_cost)
-            
-            w_current = pending_w
-            cols_current = pending_cols
-            
-            # Reset holdings to target allocation
-            holdings = {tkr: equity * float(wt) for tkr, wt in zip(cols_current, w_current)}
-            
-            # Log the activation
-            for tkr, wt in zip(cols_current, w_current):
-                if wt > 0.001:
-                    weights_rows.append({"date": dt.date(), "ticker": tkr, "target_weight": float(wt)})
-            
-            print(f"  Turnover cost applied: {pending_cost * 100:.4f}%")
-            print(f"  Portfolio now active with {len(cols_current)} stocks")
-            
-            pending_w = None
-            pending_cols = None
-            pending_cost = 0.0
-        
-        # ✅ STEP 5: Implement Option B inception allocation (first day after inception)
-        if started and not inception_allocated and (w_current is None) and (pending_w is None):
+        # ✅ Option B inception allocation: compute and apply on same day (t+0)
+        if started and not inception_allocated and (w_current is None):
             print(f"\nOption B Inception Allocation on {dt.date()}")
             loc = all_dates.get_loc(dt)
             inception_allocated = True
             
             if loc >= LOOKBACK:
+                # Lookback window ends at t-1 (yesterday)
                 window_rets_full = rets.iloc[loc - LOOKBACK:loc]
                 valid_cols = window_rets_full.count()
                 cols = valid_cols[valid_cols >= min_obs].index.tolist()
@@ -231,14 +200,22 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                         w_new = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
                         
                         # First allocation: turnover = 1.0
-                        pending_w = w_new
-                        pending_cols = cols
-                        pending_cost = 1.0 * fee
+                        turnover = 1.0
+                        turnover_cost = turnover * fee
+                        equity *= (1.0 - turnover_cost)
                         
-                        print(f"  Inception weights computed, will activate tomorrow")
-                        print(f"  Turnover cost (first entry): {pending_cost * 100:.4f}%")
+                        w_current = w_new
+                        cols_current = cols
+                        holdings = {tkr: equity * float(wt) for tkr, wt in zip(cols, w_new)}
+                        
+                        for tkr, wt in zip(cols, w_new):
+                            if wt > 0.001:
+                                weights_rows.append({"date": dt.date(), "ticker": tkr, "target_weight": float(wt)})
+                        
+                        print(f"  Turnover: {turnover:.4f}, Cost: {turnover_cost * 100:.4f}%")
+                        print(f"  Portfolio active with {len(cols)} stocks")
         
-        # Rebalance on month-end dates (same logic, but set pending instead of current)
+        # ✅ Rebalance on month-end dates: compute and apply same day (t+0)
         is_month_end = dt in month_ends
         
         if is_month_end:
@@ -246,7 +223,7 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
             loc = all_dates.get_loc(dt)
             
             if loc >= LOOKBACK:
-                # Window ends at t-1 (yesterday), not today
+                # Window ends at t-1 (yesterday)
                 window_rets_full = rets.iloc[loc - LOOKBACK:loc]
                 valid_cols = window_rets_full.count()
                 cols = valid_cols[valid_cols >= min_obs].index.tolist()
@@ -261,19 +238,26 @@ def run_walkforward_papertrade(closes_dkk: pd.DataFrame):
                         mu_ann, cov_ann = estimate_mu_cov_ann(wdw)
                         w_new = max_sharpe_weights(mu_ann, cov_ann, max_w=MAX_W)
                         
-                        # ✅ STEP 3: Compute turnover and SET PENDING (do NOT apply immediately)
+                        # Compute turnover and apply immediately (t+0)
                         if w_current is None:
                             turnover = 1.0
                         else:
                             old = pd.Series(w_current, index=cols_current).reindex(cols).fillna(0.0).values
                             turnover = float(np.sum(np.abs(w_new - old)))
                         
-                        pending_cost = turnover * fee
-                        pending_w = w_new
-                        pending_cols = cols
+                        turnover_cost = turnover * fee
+                        equity *= (1.0 - turnover_cost)
                         
-                        print(f"  Turnover: {turnover:.4f}, Cost (pending): {pending_cost * 100:.4f}%")
-                        print(f"  Weights will activate on next trading day")
+                        w_current = w_new
+                        cols_current = cols
+                        holdings = {tkr: equity * float(wt) for tkr, wt in zip(cols, w_new)}
+                        
+                        for tkr, wt in zip(cols, w_new):
+                            if wt > 0.001:
+                                weights_rows.append({"date": dt.date(), "ticker": tkr, "target_weight": float(wt)})
+                        
+                        print(f"  Turnover: {turnover:.4f}, Cost: {turnover_cost * 100:.4f}%")
+                        print(f"  Portfolio rebalanced to {len(cols)} stocks")
         
         # Apply daily returns if portfolio is active
         if w_current is None or cols_current is None or not holdings:
