@@ -83,14 +83,6 @@ def calculate_return_at_point(equity_series: pd.Series, start_value: float) -> p
     """Calculate return percentage at each point"""
     return (equity_series / start_value - 1.0) * 100
 
-def get_cutoff_time(current_time: datetime, days_back: int) -> datetime:
-    """Get cutoff time rounded to nearest full hour, days_back in the past"""
-    # Round current time to nearest full hour (floor)
-    rounded_now = current_time.replace(minute=0, second=0, microsecond=0)
-    # Go back N days from rounded hour
-    cutoff = rounded_now - timedelta(days=days_back)
-    return cutoff
-
 def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
     """Generate appropriate tick positions and format based on period"""
     dates = data_df["Date"].values
@@ -304,15 +296,15 @@ with col_interval:
         label_visibility="collapsed"
     )
 
-# Get current time rounded to nearest hour
-current_time = pd.Timestamp.now(tz='Europe/Copenhagen')
+# Get current time rounded to nearest hour (using timezone-naive datetime)
+current_time = pd.Timestamp.now()
 rounded_now = current_time.replace(minute=0, second=0, microsecond=0)
 
 # Prepare data based on selected time period
 eq_plot = equity_dkk.copy()
 
 if current_config["days"] is not None:
-    # Calculate cutoff: go back N days from the rounded current hour
+    # Calculate cutoff: go back N days from the rounded current hour (timezone-naive)
     cutoff = rounded_now - timedelta(days=current_config["days"])
     eq_plot = eq_plot[eq_plot.index >= cutoff]
 else:
@@ -329,8 +321,11 @@ eq_df = eq_resampled.to_frame("CognivectaX").reset_index()
 eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
 
 # Calculate return at each point for hover info
-start_value = eq_resampled.iloc[0]
-eq_df["Return %"] = calculate_return_at_point(eq_resampled.values, start_value)
+if len(eq_df) > 0:
+    start_value = eq_resampled.iloc[0]
+    eq_df["Return %"] = calculate_return_at_point(eq_resampled.values, start_value)
+else:
+    start_value = 0
 
 # Debug: Check if we have data
 if len(eq_df) == 0:
@@ -521,5 +516,6 @@ with st.expander("🔧 Debug Info"):
         st.write(f"**Antal beholdinger:** {len(weights)}")
         st.write(f"**Vægt sum:** {weights['weight'].sum():.4f}")
         st.write(f"**Data points på chart:** {len(eq_df)}")
-        st.write(f"**Start værdi:** {start_value:,.0f} kr")
+        if start_value > 0:
+            st.write(f"**Start værdi:** {start_value:,.0f} kr")
         st.write(f"**Tick positions:** {len(tick_positions)} ticks")
