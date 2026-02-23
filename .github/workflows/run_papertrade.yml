@@ -2,6 +2,8 @@ name: Run papertrade test
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '* 13-21 * * 1-5'
 
 permissions:
   contents: write
@@ -33,4 +35,3 @@ jobs:
           git add data/papertrade data/weights_latest.csv
           git commit -m "Update test results" || echo "No changes"
           git push
-
