@@ -461,7 +461,7 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             text-align: center;
             cursor: pointer;
             transition: all 0.3s ease;
-        " onclick="alert('clicked')">
+        ">
             <div style="font-size: 16px; font-weight: 900; color: #000000; margin-bottom: 8px;">
                 {label}
             </div>
@@ -471,7 +471,7 @@ for col, (label, ret) in zip(ret_cols, returns_data):
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("Select", key=f"ret_btn_{label}", label_visibility="collapsed", use_container_width=True):
+        if st.button(" ", key=f"ret_btn_{label}", use_container_width=True):
             st.session_state.selected_time_period = label
             st.rerun()
 
