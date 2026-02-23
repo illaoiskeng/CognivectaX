@@ -119,11 +119,15 @@ def calculate_return_at_point(equity_value: float, start_value: float) -> float:
         return 0
     return (equity_value / start_value - 1.0) * 100
 
-def filter_market_hours(data: pd.Series) -> pd.Series:
-    """Filter data to only include US market hours"""
+def filter_market_hours(data: pd.Series, period: str) -> pd.Series:
+    """Filter data to only include US market hours (only for intraday periods)"""
+    # Only apply market hours filter for intraday periods (1D, 1U)
+    if period not in ["1D", "1U"]:
+        return data
+    
     # Apply market hours filter
     market_data = data[data.index.map(is_market_hours)]
-    # If filtering resulted in empty data, return original (for daily data)
+    # If filtering resulted in empty data, return original
     if len(market_data) == 0:
         return data
     return market_data
@@ -350,8 +354,8 @@ if current_config["days"] is not None:
     cutoff = rounded_now - timedelta(days=current_config["days"])
     eq_plot = eq_plot[eq_plot.index >= cutoff]
 
-# Filter to market hours only (with fallback for daily data)
-eq_plot_filtered = filter_market_hours(eq_plot)
+# Filter to market hours only (only for intraday periods)
+eq_plot_filtered = filter_market_hours(eq_plot, current_period)
 
 # Resample data based on selected interval (with fallback)
 eq_resampled = resample_data(eq_plot_filtered, selected_interval)
@@ -368,6 +372,8 @@ if len(eq_df) > 0:
     eq_df["Return %"] = eq_df["CognivectaX"].apply(
         lambda x: calculate_return_at_point(x, start_value)
     )
+    # Format return percentage as string for hover
+    eq_df["Return Text"] = eq_df["Return %"].apply(lambda x: f"{x:+.2f}")
 else:
     start_value = 0
 
@@ -397,8 +403,8 @@ else:
         mode='lines',
         line=dict(color='#1f77b4', width=3),
         fillcolor='rgba(31, 119, 180, 0.15)',
-        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<br>Gain from start: +%{customdata:.2f}%<extra></extra>",
-        customdata=eq_df["Return %"]
+        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<br>Gain: %{text}%<extra></extra>",
+        text=eq_df["Return Text"]
     ))
 
     fig.update_layout(
