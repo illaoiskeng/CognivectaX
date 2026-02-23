@@ -33,6 +33,7 @@ def load_weights(path: str) -> pd.DataFrame:
 def load_equity(path: str) -> pd.Series:
     """Load the daily equity curve"""
     df = pd.read_csv(path)
+    # Try to parse as datetime - handles both daily and intraday
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
     eq = pd.Series(df["total_value"].values, index=df["date"], name="equity")
@@ -77,11 +78,17 @@ def get_return_sign(ret: float) -> str:
 
 def resample_data(data: pd.Series, interval: str) -> pd.Series:
     """Resample data to specified interval"""
-    return data.resample(interval).last()
+    try:
+        return data.resample(interval).last()
+    except Exception as e:
+        st.warning(f"Cannot resample to {interval}: {str(e)}")
+        return data
 
-def calculate_return_at_point(equity_series: pd.Series, start_value: float) -> pd.Series:
-    """Calculate return percentage at each point"""
-    return (equity_series / start_value - 1.0) * 100
+def calculate_return_at_point(equity_value: float, start_value: float) -> float:
+    """Calculate return percentage at a point"""
+    if start_value == 0:
+        return 0
+    return (equity_value / start_value - 1.0) * 100
 
 def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
     """Generate appropriate tick positions and format based on period"""
@@ -90,7 +97,6 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
     if period == "1D":
         # Show every hour (hourly ticks)
         tick_format = "%H:%M"
-        # Get unique hours
         tick_positions = pd.to_datetime(dates).floor('H').unique()
         tick_positions = sorted(tick_positions)
         return tick_positions, tick_format
@@ -107,7 +113,6 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
         tick_format = "%d. %b"
         tick_positions = pd.to_datetime(dates).floor('D').unique()
         tick_positions = sorted(tick_positions)
-        # Filter to every 5 days
         tick_positions = [t for i, t in enumerate(tick_positions) if i % 5 == 0]
         if len(tick_positions) > 0 and tick_positions[-1] != pd.to_datetime(dates[-1]).floor('D'):
             tick_positions.append(pd.to_datetime(dates[-1]).floor('D'))
@@ -118,7 +123,6 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
         tick_format = "%d. %b"
         tick_positions = pd.to_datetime(dates).floor('D').unique()
         tick_positions = sorted(tick_positions)
-        # Filter to every 10 days
         tick_positions = [t for i, t in enumerate(tick_positions) if i % 10 == 0]
         if len(tick_positions) > 0 and tick_positions[-1] != pd.to_datetime(dates[-1]).floor('D'):
             tick_positions.append(pd.to_datetime(dates[-1]).floor('D'))
@@ -129,7 +133,6 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
         tick_format = "%d. %b"
         tick_positions = pd.to_datetime(dates).floor('D').unique()
         tick_positions = sorted(tick_positions)
-        # Filter to every 15 days
         tick_positions = [t for i, t in enumerate(tick_positions) if i % 15 == 0]
         if len(tick_positions) > 0 and tick_positions[-1] != pd.to_datetime(dates[-1]).floor('D'):
             tick_positions.append(pd.to_datetime(dates[-1]).floor('D'))
@@ -231,7 +234,7 @@ with col_header_right:
 # ===== TIME PERIOD SELECTOR =====
 st.markdown("---")
 
-st.caption(f"Seneste opdatering: {pd.Timestamp.now(tz='Europe/Copenhagen').strftime('%d. %b. %Y – %H:%M:%S')}")
+st.caption(f"Seneste opdatering: {pd.Timestamp.now().strftime('%d. %b. %Y – %H:%M:%S')}")
 
 # Initialize session state for time period
 if "selected_time_period" not in st.session_state:
@@ -278,7 +281,6 @@ time_periods = {
 
 current_period = st.session_state.selected_time_period
 
-# Get current config, default to 1M if not found
 if current_period not in time_periods:
     current_period = "1M"
     st.session_state.selected_time_period = "1M"
@@ -296,7 +298,7 @@ with col_interval:
         label_visibility="collapsed"
     )
 
-# Get current time rounded to nearest hour (using timezone-naive datetime)
+# Get current time rounded to nearest hour
 current_time = pd.Timestamp.now()
 rounded_now = current_time.replace(minute=0, second=0, microsecond=0)
 
@@ -304,46 +306,43 @@ rounded_now = current_time.replace(minute=0, second=0, microsecond=0)
 eq_plot = equity_dkk.copy()
 
 if current_config["days"] is not None:
-    # Calculate cutoff: go back N days from the rounded current hour (timezone-naive)
     cutoff = rounded_now - timedelta(days=current_config["days"])
     eq_plot = eq_plot[eq_plot.index >= cutoff]
-else:
-    # For 'max', use all data
-    pass
 
 # Resample data based on selected interval
 eq_resampled = resample_data(eq_plot, selected_interval)
 
-# Remove NaN values that might appear from resampling
+# Remove NaN values
 eq_resampled = eq_resampled.dropna()
 
 eq_df = eq_resampled.to_frame("CognivectaX").reset_index()
 eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
 
-# Calculate return at each point for hover info
+# Calculate return at each point from the START of the period
 if len(eq_df) > 0:
-    start_value = eq_resampled.iloc[0]
-    eq_df["Return %"] = calculate_return_at_point(eq_resampled.values, start_value)
+    start_value = eq_df["CognivectaX"].iloc[0]
+    eq_df["Return %"] = eq_df["CognivectaX"].apply(
+        lambda x: calculate_return_at_point(x, start_value)
+    )
 else:
     start_value = 0
 
-# Debug: Check if we have data
+# Check if we have data
 if len(eq_df) == 0:
-    st.warning(f"No data for period {current_period} with interval {selected_interval}")
+    st.warning(f"No data for period {current_period} with interval {selected_interval}. Try a different interval.")
 else:
-    # Calculate y-axis range with padding at the top
+    # Calculate y-axis range with padding
     min_value = eq_df["CognivectaX"].min()
     max_value = eq_df["CognivectaX"].max()
     value_range = max_value - min_value
     
-    # Add 15% padding above the maximum value
     y_max = max_value + (value_range * 0.15)
     y_min = min_value - (value_range * 0.05)
     
     # Generate tick positions
     tick_positions, tick_format = generate_tick_positions(eq_df, current_period)
     
-    # Create professional chart
+    # Create chart
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
@@ -354,7 +353,7 @@ else:
         mode='lines',
         line=dict(color='#1f77b4', width=3),
         fillcolor='rgba(31, 119, 180, 0.15)',
-        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<br>Gain: %{customdata:.2f}%<extra></extra>",
+        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<br>Gain from start: +%{customdata:.2f}%<extra></extra>",
         customdata=eq_df["Return %"]
     ))
 
@@ -397,12 +396,10 @@ returns_data = [
     ("max", inception_return)
 ]
 
-# Single row - clickable buttons with returns displayed inside
 ret_cols = st.columns(7)
 
 for col, (label, ret) in zip(ret_cols, returns_data):
     with col:
-        # Check if this button is active
         is_active = st.session_state.selected_time_period == label
         
         if np.isnan(ret):
@@ -412,7 +409,6 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             display_ret = f"{get_return_sign(ret)}{ret*100:.2f}%"
             color = get_return_color(ret)
         
-        # Determine if button is clicked
         if st.button(
             label,
             key=f"ret_btn_{label}",
@@ -421,7 +417,6 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             st.session_state.selected_time_period = label
             st.rerun()
         
-        # Apply active styling with return value inside
         active_class = "active" if is_active else ""
         st.markdown(f"""
         <div class="return-box {active_class}" style="border-left-color: {color}; margin-top: -40px;">
@@ -435,7 +430,6 @@ st.markdown("---")
 
 col_main, col_side = st.columns([2, 1])
 
-# ===== LEFT COLUMN: DETAILS =====
 with col_main:
     st.subheader("📊 Portfolio Information")
     
@@ -452,7 +446,6 @@ with col_main:
         profit_pct = (profit / START_CAPITAL_DKK) * 100
         st.metric("Samlet Profit", f"{profit:,.0f} kr", f"{profit_pct:.2f}%")
 
-# ===== RIGHT COLUMN: ALLOCATION PIE =====
 with col_side:
     st.subheader("📈 Allokeringer")
     
@@ -506,16 +499,15 @@ with st.expander("🔧 Debug Info"):
     col_debug1, col_debug2 = st.columns(2)
     
     with col_debug1:
-        st.write(f"**Equity curve længde:** {len(equity_dkk)} dage")
-        st.write(f"**Dato interval:** {equity_dkk.index[0].date()} til {equity_dkk.index[-1].date()}")
+        st.write(f"**Equity curve længde:** {len(equity_dkk)}")
+        st.write(f"**Dato interval:** {equity_dkk.index[0]} til {equity_dkk.index[-1]}")
         st.write(f"**Valgt periode:** {current_period}")
         st.write(f"**Valgt interval:** {selected_interval}")
-        st.write(f"**Nuværende tid (afrundet):** {rounded_now}")
     
     with col_debug2:
         st.write(f"**Antal beholdinger:** {len(weights)}")
-        st.write(f"**Vægt sum:** {weights['weight'].sum():.4f}")
         st.write(f"**Data points på chart:** {len(eq_df)}")
         if start_value > 0:
-            st.write(f"**Start værdi:** {start_value:,.0f} kr")
-        st.write(f"**Tick positions:** {len(tick_positions)} ticks")
+            st.write(f"**Start værdi (period):** {start_value:,.0f} kr")
+        st.write(f"**Aktuel værdi:** {current_value:,.0f} kr")
+        st.write(f"**Tick positions:** {len(tick_positions)}")
