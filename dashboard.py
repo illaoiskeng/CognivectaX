@@ -5,6 +5,7 @@ import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
+from datetime import timedelta
 
 st.set_page_config(layout="wide")
 st_autorefresh(interval=5000, key="cognivectax_refresh_5s")
@@ -22,9 +23,7 @@ def load_weights(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
     df["ticker"] = df["ticker"].astype(str).str.upper()
     df["weight"] = df["weight"].astype(float)
-    # Filter to only stocks with weight > 0.001 (ignore numerical noise)
     df = df[df["weight"] > 0.001].copy()
-    # Normalize weights to sum to 1.0
     s = float(df["weight"].sum())
     if s > 0:
         df["weight"] = df["weight"] / s
@@ -76,6 +75,10 @@ def get_return_sign(ret: float) -> str:
         return "N/A"
     return "+" if ret >= 0 else ""
 
+def resample_data(data: pd.Series, interval: str) -> pd.Series:
+    """Resample data to specified interval"""
+    return data.resample(interval).last()
+
 current_value = float(equity_dkk.iloc[-1])
 inception_return = (current_value / START_CAPITAL_DKK - 1.0)
 
@@ -104,20 +107,49 @@ st.markdown("""
         font-size: 14px;
         color: #666;
     }
-    .return-positive {
-        color: #00AA00;
-        font-weight: bold;
-    }
-    .return-negative {
-        color: #FF4444;
-        font-weight: bold;
+    .time-button-container {
+        display: flex;
+        gap: 8px;
+        margin: 20px 0;
+        flex-wrap: wrap;
     }
     .time-button {
-        padding: 8px 12px;
-        margin: 5px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
+        padding: 12px 16px;
+        border: 2px solid #ddd;
+        border-radius: 6px;
+        background-color: white;
         cursor: pointer;
+        font-weight: 500;
+        font-size: 14px;
+        transition: all 0.3s ease;
+    }
+    .time-button:hover {
+        border-color: #1f77b4;
+        background-color: #f0f7ff;
+    }
+    .time-button.active {
+        background-color: #1f77b4;
+        color: white;
+        border-color: #1f77b4;
+    }
+    .return-box {
+        text-align: center;
+        padding: 15px;
+        border-radius: 8px;
+        background-color: #f9f9f9;
+        border-left: 4px solid;
+        margin-bottom: 10px;
+    }
+    .return-label {
+        font-size: 10px;
+        color: #666;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+        font-weight: bold;
+    }
+    .return-value {
+        font-size: 18px;
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -148,35 +180,63 @@ with col_header_right:
 # ===== TIME PERIOD SELECTOR =====
 st.markdown("---")
 
-col_time_left, col_time_right = st.columns([0.3, 0.7])
+st.caption(f"Seneste opdatering: {pd.Timestamp.now(tz='Europe/Copenhagen').strftime('%d. %b. %Y – %H:%M:%S')}")
 
-with col_time_left:
-    view = st.selectbox(
-        "Tidshorisont:",
-        ["1 dag", "1 uge", "1 måned", "3 måneder", "6 måneder", "12 måneder", "Historisk"],
-        index=2,
+# Initialize session state for time period
+if "selected_time_period" not in st.session_state:
+    st.session_state.selected_time_period = "1M"
+
+if "selected_interval" not in st.session_state:
+    st.session_state.selected_interval = None
+
+# Time period configuration
+time_periods = {
+    "1D": {"days": 1, "intervals": ["5min", "15min", "30min"], "x_format": "%H:%M"},
+    "1U": {"days": 7, "intervals": ["15min", "30min", "1H"], "x_format": "%a"},
+    "1M": {"days": 30, "intervals": ["1H", "4H", "1D"], "x_format": "%d"},
+    "3M": {"days": 90, "intervals": ["4H", "1D", "1W"], "x_format": "10d"},
+    "6M": {"days": 180, "intervals": ["4H", "1D", "1W"], "x_format": "15d"},
+    "1 ÅR": {"days": 365, "intervals": ["4H", "1D", "1W"], "x_format": "%b"},
+}
+
+# Interactive time period buttons
+time_cols = st.columns(7)
+for idx, (period, config) in enumerate(time_periods.items()):
+    with time_cols[idx]:
+        if st.button(
+            period,
+            key=f"btn_{period}",
+            use_container_width=True,
+            on_click=lambda p=period: st.session_state.update(selected_time_period=p)
+        ):
+            st.session_state.selected_time_period = period
+
+current_period = st.session_state.selected_time_period
+current_config = time_periods[current_period]
+
+# ===== EQUITY CURVE CHART WITH INTERVAL SELECTOR =====
+st.markdown("---")
+
+# Top right dropdown for interval selection
+col_chart_header, col_interval = st.columns([0.85, 0.15])
+
+with col_interval:
+    selected_interval = st.selectbox(
+        "Interval",
+        options=current_config["intervals"],
+        key=f"interval_{current_period}",
         label_visibility="collapsed"
     )
 
-with col_time_right:
-    st.caption(f"Seneste opdatering: {pd.Timestamp.now(tz='Europe/Copenhagen').strftime('%d. %b. %Y – %H:%M:%S')}")
-
-# ===== EQUITY CURVE CHART =====
-days_map = {
-    "1 uge": 7,
-    "1 måned": 31,
-    "3 måneder": 93,
-    "6 måneder": 186,
-    "12 måneder": 252,
-}
-
+# Prepare data based on selected time period
 eq_plot = equity_dkk.copy()
+cutoff = eq_plot.index.max() - timedelta(days=current_config["days"])
+eq_plot = eq_plot[eq_plot.index >= cutoff]
 
-if view != "Historisk" and view in days_map:
-    cutoff = eq_plot.index.max() - pd.Timedelta(days=days_map[view])
-    eq_plot = eq_plot[eq_plot.index >= cutoff]
+# Resample data based on selected interval
+eq_resampled = resample_data(eq_plot, selected_interval)
 
-eq_df = eq_plot.to_frame("CognivectaX").reset_index()
+eq_df = eq_resampled.to_frame("CognivectaX").reset_index()
 eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
 
 # Create professional chart
@@ -189,20 +249,47 @@ fig.add_trace(go.Scatter(
     name='CognivectaX',
     line=dict(color='#1f77b4', width=2),
     fillcolor='rgba(31, 119, 180, 0.15)',
-    hovertemplate="<b>%{x|%d. %b. %Y}</b><br>Værdi: %{y:,.0f} kr<extra></extra>"
+    hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<extra></extra>"
 ))
+
+# Configure x-axis based on time period
+if current_period == "1D":
+    # Show every hour
+    tick_format = "%H:%M"
+    tick_interval = 3600  # seconds
+elif current_period == "1U":
+    # Show every day
+    tick_format = "%a"
+    tick_interval = "day"
+elif current_period == "1M":
+    # Show every 5 days
+    tick_format = "%d %b"
+    tick_interval = None
+elif current_period == "3M":
+    # Show every 10 days
+    tick_format = "%d %b"
+    tick_interval = None
+elif current_period == "6M":
+    # Show every 15 days
+    tick_format = "%d %b"
+    tick_interval = None
+else:  # 1 ÅR
+    # Show every month
+    tick_format = "%b"
+    tick_interval = None
 
 fig.update_layout(
     title="",
-    xaxis_title="Dato",
+    xaxis_title="",
     yaxis_title="Portfolio Værdi (DKK)",
     hovermode='x unified',
     template='plotly_white',
     height=500,
-    margin=dict(l=50, r=50, t=50, b=50),
+    margin=dict(l=50, r=50, t=20, b=50),
     xaxis=dict(
         gridcolor='#f0f0f0',
         showgrid=True,
+        tickformat=tick_format,
     ),
     yaxis=dict(
         gridcolor='#f0f0f0',
@@ -213,10 +300,8 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ===== RETURNS METRICS ROW =====
+# ===== RETURNS METRICS ROW (Professional Style) =====
 st.markdown("---")
-
-ret_cols = st.columns(7)
 
 returns_data = [
     ("1d", ret_1d),
@@ -228,6 +313,8 @@ returns_data = [
     ("max", inception_return)
 ]
 
+ret_cols = st.columns(7)
+
 for col, (label, ret) in zip(ret_cols, returns_data):
     with col:
         if np.isnan(ret):
@@ -238,13 +325,9 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             color = get_return_color(ret)
         
         st.markdown(f"""
-        <div style="text-align: center; padding: 15px; border-radius: 8px; background-color: #f9f9f9; border-left: 4px solid {color};">
-            <div style="font-size: 10px; color: #666; margin-bottom: 5px; text-transform: uppercase; font-weight: bold;">
-                {label}
-            </div>
-            <div style="font-size: 18px; font-weight: bold; color: {color};">
-                {display_ret}
-            </div>
+        <div class="return-box" style="border-left-color: {color};">
+            <div class="return-label">{label}</div>
+            <div class="return-value" style="color: {color};">{display_ret}</div>
         </div>
         """, unsafe_allow_html=True)
 
