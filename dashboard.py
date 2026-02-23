@@ -452,6 +452,10 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             else:
                 color = "#FF4444"
         
+        if st.button(" ", key=f"ret_btn_{label}", use_container_width=True):
+            st.session_state.selected_time_period = label
+            st.rerun()
+        
         st.markdown(f"""
         <div style="
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -459,8 +463,10 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             border-radius: 8px;
             border: 2px solid #e0e0e0;
             text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
+            margin-top: -42px;
+            position: relative;
+            z-index: 1;
+            pointer-events: none;
         ">
             <div style="font-size: 16px; font-weight: 900; color: #000000; margin-bottom: 8px;">
                 {label}
@@ -470,10 +476,6 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             </div>
         </div>
         """, unsafe_allow_html=True)
-        
-        if st.button(" ", key=f"ret_btn_{label}", use_container_width=True):
-            st.session_state.selected_time_period = label
-            st.rerun()
 
 # ===== MAIN CONTENT AREA =====
 st.markdown("---")
