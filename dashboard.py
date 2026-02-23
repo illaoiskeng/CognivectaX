@@ -552,4 +552,3 @@ with st.expander("🔧 Debug Info"):
         st.write(f"**Dato interval:** {equity_dkk.index[0]} til {equity_dkk.index[-1]}")
         st.write(f"**Valgt periode:** {current_period}")
         st.write(f"
-
