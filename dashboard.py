@@ -186,7 +186,7 @@ time_periods = {
     "3M": {"days": 90, "intervals": ["4H", "1D", "1W"]},
     "6M": {"days": 180, "intervals": ["4H", "1D", "1W"]},
     "1 ÅR": {"days": 365, "intervals": ["4H", "1D", "1W"]},
-    "max": {"days": None, "intervals": ["1D", "1W", "1M"]},  # Use all data
+    "max": {"days": None, "intervals": ["1D", "1W", "1M"]},
 }
 
 current_period = st.session_state.selected_time_period
@@ -298,7 +298,6 @@ else:
 # ===== CLICKABLE RETURNS METRICS ROW (Bottom) =====
 st.markdown("---")
 
-# Create two rows: one for the returns display, one for the clickable buttons
 returns_data = [
     ("1D", ret_1d),
     ("1U", ret_1w),
@@ -309,33 +308,10 @@ returns_data = [
     ("max", inception_return)
 ]
 
-# First row - display returns
-ret_cols_display = st.columns(7)
+# Single row - clickable buttons with returns displayed inside
+ret_cols = st.columns(7)
 
-for col, (label, ret) in zip(ret_cols_display, returns_data):
-    with col:
-        if np.isnan(ret):
-            display_ret = "N/A"
-            color = "#999999"
-        else:
-            display_ret = f"{get_return_sign(ret)}{ret*100:.2f}%"
-            color = get_return_color(ret)
-        
-        st.markdown(f"""
-        <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: white; border-left: 4px solid {color};">
-            <div style="font-size: 10px; color: #666; margin-bottom: 2px; text-transform: uppercase; font-weight: bold;">
-                {label}
-            </div>
-            <div style="font-size: 16px; font-weight: bold; color: {color};">
-                {display_ret}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-# Second row - clickable buttons
-ret_cols_buttons = st.columns(7)
-
-for col, (label, ret) in zip(ret_cols_buttons, returns_data):
+for col, (label, ret) in zip(ret_cols, returns_data):
     with col:
         # Check if this button is active
         is_active = st.session_state.selected_time_period == label
@@ -347,26 +323,23 @@ for col, (label, ret) in zip(ret_cols_buttons, returns_data):
             display_ret = f"{get_return_sign(ret)}{ret*100:.2f}%"
             color = get_return_color(ret)
         
-        # Create clickable box
-        button_clicked = st.button(
+        # Determine if button is clicked
+        if st.button(
             label,
             key=f"ret_btn_{label}",
-            use_container_width=True,
-            on_click=lambda l=label: st.session_state.update(selected_time_period=l)
-        )
+            use_container_width=True
+        ):
+            st.session_state.selected_time_period = label
+            st.rerun()
         
-        # Apply active styling
+        # Apply active styling with return value inside
         active_class = "active" if is_active else ""
         st.markdown(f"""
-        <div class="return-box {active_class}" style="border-left-color: {color}; margin-top: -35px; padding-top: 8px; padding-bottom: 8px;">
+        <div class="return-box {active_class}" style="border-left-color: {color}; margin-top: -40px;">
             <div class="return-label">{label}</div>
             <div class="return-value" style="color: {color};">{display_ret}</div>
         </div>
         """, unsafe_allow_html=True)
-
-# Force rerun if button was clicked
-if button_clicked:
-    st.rerun()
 
 # ===== MAIN CONTENT AREA =====
 st.markdown("---")
