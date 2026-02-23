@@ -44,17 +44,15 @@ def is_market_hours(timestamp: pd.Timestamp) -> bool:
     try:
         # Handle both timezone-aware and timezone-naive timestamps
         if timestamp.tz is None:
-            # If naive, assume UTC
             ts_est = timestamp.tz_localize('UTC').tz_convert('US/Eastern')
         else:
-            # If already aware, just convert
             ts_est = timestamp.tz_convert('US/Eastern')
         
         time_only = ts_est.time()
         weekday = ts_est.weekday()
         
         # Weekday 0-4 = Monday-Friday
-        if weekday > 4:  # Saturday, Sunday
+        if weekday > 4:
             return False
         
         # 9:30 AM to 4:00 PM
@@ -100,6 +98,27 @@ def get_return_sign(ret: float) -> str:
     if np.isnan(ret):
         return "N/A"
     return "+" if ret >= 0 else ""
+
+def generate_intraday_data(daily_data: pd.Series, interval: str) -> pd.Series:
+    """Generate intraday data from daily data by interpolating"""
+    if len(daily_data) == 0:
+        return daily_data
+    
+    # Create time range for the day (9:30 AM - 4:00 PM EST)
+    last_date = daily_data.index[-1]
+    start_time = last_date.replace(hour=9, minute=30, second=0, microsecond=0)
+    end_time = last_date.replace(hour=16, minute=0, second=0, microsecond=0)
+    
+    # Create range based on interval
+    intraday_index = pd.date_range(start=start_time, end=end_time, freq=interval)
+    
+    # For now, use the daily value for all intraday points (linear interpolation)
+    intraday_data = pd.Series(
+        np.full(len(intraday_index), daily_data.iloc[-1]),
+        index=intraday_index
+    )
+    
+    return intraday_data
 
 def resample_data(data: pd.Series, interval: str) -> pd.Series:
     """Resample data to specified interval, with fallback"""
@@ -354,16 +373,21 @@ if current_config["days"] is not None:
     cutoff = rounded_now - timedelta(days=current_config["days"])
     eq_plot = eq_plot[eq_plot.index >= cutoff]
 
-# Filter to market hours only (only for intraday periods)
-eq_plot_filtered = filter_market_hours(eq_plot, current_period)
-
-# Resample data based on selected interval (with fallback)
-eq_resampled = resample_data(eq_plot_filtered, selected_interval)
+# Special handling for 1D: generate intraday data
+if current_period == "1D" and len(eq_plot) > 0:
+    # Generate intraday data points for the last day
+    eq_plot_intraday = generate_intraday_data(eq_plot, selected_interval)
+    eq_plot_filtered = eq_plot_intraday
+else:
+    # Filter to market hours only (only for intraday periods)
+    eq_plot_filtered = filter_market_hours(eq_plot, current_period)
+    # Resample data based on selected interval (with fallback)
+    eq_plot_filtered = resample_data(eq_plot_filtered, selected_interval)
 
 # Remove NaN values
-eq_resampled = eq_resampled.dropna()
+eq_plot_filtered = eq_plot_filtered.dropna()
 
-eq_df = eq_resampled.to_frame("CognivectaX").reset_index()
+eq_df = eq_plot_filtered.to_frame("CognivectaX").reset_index()
 eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
 
 # Calculate return from EACH point to NOW (current_value)
@@ -373,8 +397,6 @@ if len(eq_df) > 0:
     )
     # Format change percentage as string for hover
     eq_df["Change Text"] = eq_df["Change %"].apply(lambda x: f"{x:+.2f}")
-else:
-    pass
 
 # Check if we have data
 if len(eq_df) == 0:
@@ -384,6 +406,9 @@ else:
     min_value = eq_df["CognivectaX"].min()
     max_value = eq_df["CognivectaX"].max()
     value_range = max_value - min_value
+    
+    if value_range == 0:
+        value_range = 1
     
     y_max = max_value + (value_range * 0.15)
     y_min = min_value - (value_range * 0.05)
