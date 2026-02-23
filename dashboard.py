@@ -178,15 +178,57 @@ st.caption(f"Seneste opdatering: {pd.Timestamp.now(tz='Europe/Copenhagen').strft
 if "selected_time_period" not in st.session_state:
     st.session_state.selected_time_period = "1M"
 
-# Time period configuration
+# Time period configuration with proper x-axis settings
 time_periods = {
-    "1D": {"days": 1, "intervals": ["5min", "15min", "30min"]},
-    "1U": {"days": 7, "intervals": ["15min", "30min", "1H"]},
-    "1M": {"days": 30, "intervals": ["1H", "4H", "1D"]},
-    "3M": {"days": 90, "intervals": ["4H", "1D", "1W"]},
-    "6M": {"days": 180, "intervals": ["4H", "1D", "1W"]},
-    "1 ÅR": {"days": 365, "intervals": ["4H", "1D", "1W"]},
-    "max": {"days": None, "intervals": ["1D", "1W", "1M"]},
+    "1D": {
+        "days": 1,
+        "intervals": ["5min", "15min", "30min"],
+        "tick_format": "%H:%M",
+        "tick_interval": None,
+        "description": "24 hours - Show whole hours"
+    },
+    "1U": {
+        "days": 7,
+        "intervals": ["15min", "30min", "1H"],
+        "tick_format": "%d. %b",
+        "tick_interval": "day",
+        "description": "7 days - Show whole days"
+    },
+    "1M": {
+        "days": 30,
+        "intervals": ["1H", "4H", "1D"],
+        "tick_format": "%d. %b",
+        "tick_interval": None,
+        "description": "1 month - Show every 5 days"
+    },
+    "3M": {
+        "days": 90,
+        "intervals": ["4H", "1D", "1W"],
+        "tick_format": "%d. %b",
+        "tick_interval": None,
+        "description": "3 months - Show every 10 days"
+    },
+    "6M": {
+        "days": 180,
+        "intervals": ["4H", "1D", "1W"],
+        "tick_format": "%d. %b",
+        "tick_interval": None,
+        "description": "6 months - Show every 15 days"
+    },
+    "1 ÅR": {
+        "days": 365,
+        "intervals": ["4H", "1D", "1W"],
+        "tick_format": "%b %Y",
+        "tick_interval": None,
+        "description": "12 months - Show every month"
+    },
+    "max": {
+        "days": None,
+        "intervals": ["1D", "1W", "1M"],
+        "tick_format": "%b %Y",
+        "tick_interval": None,
+        "description": "All data - Show every month"
+    },
 }
 
 current_period = st.session_state.selected_time_period
@@ -258,19 +300,31 @@ else:
         customdata=eq_df["Return %"]
     ))
 
-    # Configure x-axis based on time period
+    # Configure x-axis ticks based on time period
     if current_period == "1D":
+        # Show every hour
+        dticks = 3600000  # milliseconds for 1 hour
         tick_format = "%H:%M"
     elif current_period == "1U":
-        tick_format = "%a"
+        # Show every day
+        dticks = "D"
+        tick_format = "%d. %b"
     elif current_period == "1M":
-        tick_format = "%d %b"
+        # Show every 5 days
+        dticks = 5 * 24 * 3600000  # 5 days in milliseconds
+        tick_format = "%d. %b"
     elif current_period == "3M":
-        tick_format = "%d %b"
+        # Show every 10 days
+        dticks = 10 * 24 * 3600000  # 10 days in milliseconds
+        tick_format = "%d. %b"
     elif current_period == "6M":
-        tick_format = "%d %b"
+        # Show every 15 days
+        dticks = 15 * 24 * 3600000  # 15 days in milliseconds
+        tick_format = "%d. %b"
     else:  # 1 ÅR or max
-        tick_format = "%b"
+        # Show every month
+        dticks = "M"
+        tick_format = "%b %Y"
 
     fig.update_layout(
         title="",
@@ -284,6 +338,8 @@ else:
             gridcolor='#f0f0f0',
             showgrid=True,
             tickformat=tick_format,
+            dtick=dticks,
+            tickmode='auto',
         ),
         yaxis=dict(
             gridcolor='#f0f0f0',
@@ -419,7 +475,11 @@ with st.expander("🔧 Debug Info"):
     with col_debug1:
         st.write(f"**Equity curve længde:** {len(equity_dkk)} dage")
         st.write(f"**Dato interval:** {equity_dkk.index[0].date()} til {equity_dkk.index[-1].date()}")
+        st.write(f"**Valgt periode:** {current_period}")
+        st.write(f"**Valgt interval:** {selected_interval}")
     
     with col_debug2:
         st.write(f"**Antal beholdinger:** {len(weights)}")
         st.write(f"**Vægt sum:** {weights['weight'].sum():.4f}")
+        st.write(f"**Data points på chart:** {len(eq_df)}")
+        st.write(f"**Start værdi:** {start_value:,.0f} kr")
