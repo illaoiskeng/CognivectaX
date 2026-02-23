@@ -79,6 +79,10 @@ def resample_data(data: pd.Series, interval: str) -> pd.Series:
     """Resample data to specified interval"""
     return data.resample(interval).last()
 
+def calculate_return_at_point(equity_series: pd.Series, start_value: float) -> pd.Series:
+    """Calculate return percentage at each point"""
+    return (equity_series / start_value - 1.0) * 100
+
 current_value = float(equity_dkk.iloc[-1])
 inception_return = (current_value / START_CAPITAL_DKK - 1.0)
 
@@ -113,7 +117,6 @@ st.markdown("""
         border-radius: 8px;
         background-color: #f9f9f9;
         border-left: 4px solid;
-        margin-bottom: 10px;
         cursor: pointer;
         transition: all 0.3s ease;
         border: 2px solid #e0e0e0;
@@ -183,9 +186,16 @@ time_periods = {
     "3M": {"days": 90, "intervals": ["4H", "1D", "1W"]},
     "6M": {"days": 180, "intervals": ["4H", "1D", "1W"]},
     "1 ÅR": {"days": 365, "intervals": ["4H", "1D", "1W"]},
+    "max": {"days": None, "intervals": ["1D", "1W", "1M"]},  # Use all data
 }
 
 current_period = st.session_state.selected_time_period
+
+# Get current config, default to 1M if not found
+if current_period not in time_periods:
+    current_period = "1M"
+    st.session_state.selected_time_period = "1M"
+
 current_config = time_periods[current_period]
 
 # ===== EQUITY CURVE CHART WITH INTERVAL SELECTOR =====
@@ -202,8 +212,10 @@ with col_interval:
 
 # Prepare data based on selected time period
 eq_plot = equity_dkk.copy()
-cutoff = eq_plot.index.max() - timedelta(days=current_config["days"])
-eq_plot = eq_plot[eq_plot.index >= cutoff]
+
+if current_config["days"] is not None:
+    cutoff = eq_plot.index.max() - timedelta(days=current_config["days"])
+    eq_plot = eq_plot[eq_plot.index >= cutoff]
 
 # Resample data based on selected interval
 eq_resampled = resample_data(eq_plot, selected_interval)
@@ -213,6 +225,10 @@ eq_resampled = eq_resampled.dropna()
 
 eq_df = eq_resampled.to_frame("CognivectaX").reset_index()
 eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
+
+# Calculate return at each point for hover info
+start_value = eq_resampled.iloc[0]
+eq_df["Return %"] = calculate_return_at_point(eq_resampled.values, start_value)
 
 # Debug: Check if we have data
 if len(eq_df) == 0:
@@ -238,7 +254,8 @@ else:
         mode='lines',
         line=dict(color='#1f77b4', width=3),
         fillcolor='rgba(31, 119, 180, 0.15)',
-        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<extra></extra>"
+        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<br>Gain: %{customdata:.2f}%<extra></extra>",
+        customdata=eq_df["Return %"]
     ))
 
     # Configure x-axis based on time period
@@ -252,7 +269,7 @@ else:
         tick_format = "%d %b"
     elif current_period == "6M":
         tick_format = "%d %b"
-    else:  # 1 ÅR
+    else:  # 1 ÅR or max
         tick_format = "%b"
 
     fig.update_layout(
@@ -278,9 +295,10 @@ else:
 
     st.plotly_chart(fig, use_container_width=True)
 
-# ===== CLICKABLE RETURNS METRICS ROW (Bottom, like the image) =====
+# ===== CLICKABLE RETURNS METRICS ROW (Bottom) =====
 st.markdown("---")
 
+# Create two rows: one for the returns display, one for the clickable buttons
 returns_data = [
     ("1D", ret_1d),
     ("1U", ret_1w),
@@ -291,13 +309,36 @@ returns_data = [
     ("max", inception_return)
 ]
 
-ret_cols = st.columns(7)
+# First row - display returns
+ret_cols_display = st.columns(7)
 
-for col, (label, ret) in zip(ret_cols, returns_data):
+for col, (label, ret) in zip(ret_cols_display, returns_data):
+    with col:
+        if np.isnan(ret):
+            display_ret = "N/A"
+            color = "#999999"
+        else:
+            display_ret = f"{get_return_sign(ret)}{ret*100:.2f}%"
+            color = get_return_color(ret)
+        
+        st.markdown(f"""
+        <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: white; border-left: 4px solid {color};">
+            <div style="font-size: 10px; color: #666; margin-bottom: 2px; text-transform: uppercase; font-weight: bold;">
+                {label}
+            </div>
+            <div style="font-size: 16px; font-weight: bold; color: {color};">
+                {display_ret}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# Second row - clickable buttons
+ret_cols_buttons = st.columns(7)
+
+for col, (label, ret) in zip(ret_cols_buttons, returns_data):
     with col:
         # Check if this button is active
         is_active = st.session_state.selected_time_period == label
-        active_class = "active" if is_active else ""
         
         if np.isnan(ret):
             display_ret = "N/A"
@@ -307,21 +348,25 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             color = get_return_color(ret)
         
         # Create clickable box
-        if st.button(
-            f"{display_ret}",
+        button_clicked = st.button(
+            label,
             key=f"ret_btn_{label}",
             use_container_width=True,
             on_click=lambda l=label: st.session_state.update(selected_time_period=l)
-        ):
-            st.session_state.selected_time_period = label
+        )
         
-        # Display the return box with styling
+        # Apply active styling
+        active_class = "active" if is_active else ""
         st.markdown(f"""
-        <div class="return-box {active_class}" style="border-left-color: {color};">
+        <div class="return-box {active_class}" style="border-left-color: {color}; margin-top: -35px; padding-top: 8px; padding-bottom: 8px;">
             <div class="return-label">{label}</div>
             <div class="return-value" style="color: {color};">{display_ret}</div>
         </div>
         """, unsafe_allow_html=True)
+
+# Force rerun if button was clicked
+if button_clicked:
+    st.rerun()
 
 # ===== MAIN CONTENT AREA =====
 st.markdown("---")
