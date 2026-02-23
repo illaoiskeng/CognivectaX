@@ -5,7 +5,7 @@ import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, time
 
 st.set_page_config(layout="wide")
 st_autorefresh(interval=5000, key="cognivectax_refresh_5s")
@@ -41,22 +41,29 @@ def load_equity(path: str) -> pd.Series:
 
 def is_market_hours(timestamp: pd.Timestamp) -> bool:
     """Check if timestamp is within US market hours (9:30 AM - 4:00 PM EST)"""
-    # Convert to EST (UTC-5, or UTC-4 during daylight saving)
-    ts_est = timestamp.tz_localize('UTC').tz_convert('US/Eastern')
-    
-    # Market hours: 9:30 AM to 4:00 PM on weekdays
-    time_only = ts_est.time()
-    weekday = ts_est.weekday()
-    
-    # Weekday 0-4 = Monday-Friday
-    if weekday > 4:  # Saturday, Sunday
+    try:
+        # Handle both timezone-aware and timezone-naive timestamps
+        if timestamp.tz is None:
+            # If naive, assume UTC
+            ts_est = timestamp.tz_localize('UTC').tz_convert('US/Eastern')
+        else:
+            # If already aware, just convert
+            ts_est = timestamp.tz_convert('US/Eastern')
+        
+        time_only = ts_est.time()
+        weekday = ts_est.weekday()
+        
+        # Weekday 0-4 = Monday-Friday
+        if weekday > 4:  # Saturday, Sunday
+            return False
+        
+        # 9:30 AM to 4:00 PM
+        market_open = time(9, 30)
+        market_close = time(16, 0)
+        
+        return market_open <= time_only < market_close
+    except Exception:
         return False
-    
-    # 9:30 AM to 4:00 PM
-    market_open = datetime.strptime("09:30", "%H:%M").time()
-    market_close = datetime.strptime("16:00", "%H:%M").time()
-    
-    return market_open <= time_only < market_close
 
 # Load data
 try:
@@ -110,11 +117,7 @@ def calculate_return_at_point(equity_value: float, start_value: float) -> float:
 
 def filter_market_hours(data: pd.Series) -> pd.Series:
     """Filter data to only include US market hours"""
-    # Make index timezone-aware UTC first
-    if data.index.tz is None:
-        data.index = data.index.tz_localize('UTC')
-    
-    # Filter to market hours only
+    # Apply market hours filter
     market_data = data[data.index.map(is_market_hours)]
     return market_data
 
