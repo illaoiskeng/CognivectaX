@@ -452,29 +452,10 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             else:
                 color = "#FF4444"
         
-        st.markdown(f"""
-        <div style="
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            padding: 15px 10px;
-            border-radius: 8px;
-            border: 2px solid #e0e0e0;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        " onclick="window.location.hash='period={label}'; location.reload();" onmouseover="this.style.backgroundColor='#f0f7ff'; this.style.border='2px solid #1f77b4';" onmouseout="this.style.backgroundColor=''; this.style.border='2px solid #e0e0e0';">
-            <div style="font-size: 16px; font-weight: 900; color: #000000; margin-bottom: 8px;">
-                {label}
-            </div>
-            <div style="font-size: 18px; font-weight: bold; color: {color};">
-                {display_ret}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-# Handle query parameter
-query_params = st.query_params
-if "period" in query_params:
-    st.session_state.selected_time_period = query_params["period"]
+        # Just use regular button with custom label
+        if st.button(f"{label}\n{display_ret}", key=f"ret_btn_{label}", use_container_width=True):
+            st.session_state.selected_time_period = label
+            st.rerun()
 
 # ===== MAIN CONTENT AREA =====
 st.markdown("---")
