@@ -3,7 +3,7 @@ name: Run papertrade test
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/3 12-20 * * 1-5'
+    - cron: '*/3 * * * *'
 
 permissions:
   contents: write
