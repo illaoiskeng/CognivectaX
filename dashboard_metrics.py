@@ -206,6 +206,15 @@ def calculate_and_save_monthly_metrics(tickers: list, weights: list,
 
 # ===== DASHBOARD DISPLAY FUNCTIONS =====
 
+def safe_format(value, format_str=".2f", suffix=""):
+    """Safely format values, handling None and NaN"""
+    if value is None or pd.isna(value):
+        return "N/A"
+    try:
+        return f"{float(value):{format_str}}{suffix}"
+    except:
+        return "N/A"
+
 def display_daily_metrics():
     """Display daily metrics in dashboard"""
     st.subheader("📊 Daily Performance Metrics (Last 30 Days)")
@@ -220,10 +229,11 @@ def display_daily_metrics():
             delta = None
             if len(daily_df) > 1:
                 prev_sharpe = daily_df.iloc[-2]['sharpe_ratio']
-                delta = latest_sharpe - prev_sharpe if not np.isnan(prev_sharpe) else None
+                if not pd.isna(prev_sharpe) and not pd.isna(latest_sharpe):
+                    delta = latest_sharpe - prev_sharpe
             st.metric(
                 "Sharpe Ratio", 
-                f"{latest_sharpe:.2f}" if not np.isnan(latest_sharpe) else "N/A",
+                safe_format(latest_sharpe, ".2f"),
                 delta=delta
             )
         
@@ -232,10 +242,11 @@ def display_daily_metrics():
             delta = None
             if len(daily_df) > 1:
                 prev_alpha = daily_df.iloc[-2]['alpha']
-                delta = latest_alpha - prev_alpha if not np.isnan(prev_alpha) else None
+                if not pd.isna(prev_alpha) and not pd.isna(latest_alpha):
+                    delta = latest_alpha - prev_alpha
             st.metric(
                 "Alpha", 
-                f"{latest_alpha:.4f}" if not np.isnan(latest_alpha) else "N/A",
+                safe_format(latest_alpha, ".4f"),
                 delta=delta
             )
         
@@ -244,18 +255,23 @@ def display_daily_metrics():
             delta = None
             if len(daily_df) > 1:
                 prev_beta = daily_df.iloc[-2]['beta']
-                delta = latest_beta - prev_beta if not np.isnan(prev_beta) else None
+                if not pd.isna(prev_beta) and not pd.isna(latest_beta):
+                    delta = latest_beta - prev_beta
             st.metric(
                 "Beta", 
-                f"{latest_beta:.2f}" if not np.isnan(latest_beta) else "N/A",
+                safe_format(latest_beta, ".2f"),
                 delta=delta
             )
         
         with col4:
             latest_dd = daily_df.iloc[-1]['max_drawdown']
+            if not pd.isna(latest_dd):
+                dd_display = f"{latest_dd*100:.2f}%"
+            else:
+                dd_display = "N/A"
             st.metric(
                 "Max Drawdown", 
-                f"{latest_dd*100:.2f}%" if not np.isnan(latest_dd) else "N/A"
+                dd_display
             )
         
         # Charts
@@ -263,11 +279,15 @@ def display_daily_metrics():
         sharpe_data = daily_df[['date', 'sharpe_ratio']].dropna()
         if len(sharpe_data) > 0:
             st.line_chart(sharpe_data.set_index('date'))
+        else:
+            st.info("No sharpe ratio data available yet")
         
         st.write("**Alpha & Beta Trend**")
         ab_data = daily_df[['date', 'alpha', 'beta']].dropna()
         if len(ab_data) > 0:
             st.line_chart(ab_data.set_index('date'))
+        else:
+            st.info("No alpha/beta data available yet")
     else:
         st.info("⏳ No daily metrics yet. Check back after market close.")
 
@@ -280,12 +300,12 @@ def display_monthly_metrics():
     if len(monthly_df) > 0:
         # Format for display
         display_df = monthly_df.copy()
-        display_df['monthly_return'] = display_df['monthly_return'].apply(lambda x: f"{x*100:.2f}%" if not np.isnan(x) else "N/A")
-        display_df['sharpe_ratio'] = display_df['sharpe_ratio'].apply(lambda x: f"{x:.2f}" if not np.isnan(x) else "N/A")
-        display_df['alpha'] = display_df['alpha'].apply(lambda x: f"{x:.4f}" if not np.isnan(x) else "N/A")
-        display_df['beta'] = display_df['beta'].apply(lambda x: f"{x:.2f}" if not np.isnan(x) else "N/A")
-        display_df['max_drawdown'] = display_df['max_drawdown'].apply(lambda x: f"{x*100:.2f}%" if not np.isnan(x) else "N/A")
-        display_df['win_rate'] = display_df['win_rate'].apply(lambda x: f"{x*100:.1f}%" if not np.isnan(x) else "N/A")
+        display_df['monthly_return'] = display_df['monthly_return'].apply(lambda x: safe_format(x * 100, ".2f", "%"))
+        display_df['sharpe_ratio'] = display_df['sharpe_ratio'].apply(lambda x: safe_format(x, ".2f"))
+        display_df['alpha'] = display_df['alpha'].apply(lambda x: safe_format(x, ".4f"))
+        display_df['beta'] = display_df['beta'].apply(lambda x: safe_format(x, ".2f"))
+        display_df['max_drawdown'] = display_df['max_drawdown'].apply(lambda x: safe_format(x * 100, ".2f", "%"))
+        display_df['win_rate'] = display_df['win_rate'].apply(lambda x: safe_format(x * 100, ".1f", "%"))
         
         st.dataframe(
             display_df[['month', 'monthly_return', 'sharpe_ratio', 'alpha', 'beta', 'max_drawdown', 'win_rate']],
@@ -304,9 +324,9 @@ def display_rebalance_history():
     if len(rebalance_df) > 0:
         # Format for display
         display_df = rebalance_df.copy()
-        display_df['pre_open_portfolio_value'] = display_df['pre_open_portfolio_value'].apply(lambda x: f"{x:,.0f} kr")
-        display_df['post_close_portfolio_value'] = display_df['post_close_portfolio_value'].apply(lambda x: f"{x:,.0f} kr")
-        display_df['portfolio_change_pct'] = display_df['portfolio_change_pct'].apply(lambda x: f"{x:+.2f}%" if not np.isnan(x) else "N/A")
+        display_df['pre_open_portfolio_value'] = display_df['pre_open_portfolio_value'].apply(lambda x: safe_format(x, ",.0f", " kr"))
+        display_df['post_close_portfolio_value'] = display_df['post_close_portfolio_value'].apply(lambda x: safe_format(x, ",.0f", " kr"))
+        display_df['portfolio_change_pct'] = display_df['portfolio_change_pct'].apply(lambda x: safe_format(x, "+.2f", "%"))
         
         st.dataframe(
             display_df[['rebalance_date', 'pre_open_portfolio_value', 'post_close_portfolio_value', 'portfolio_change_pct']],
@@ -327,7 +347,9 @@ def display_rebalance_history():
                 if stock_changes:
                     changes_df = pd.DataFrame(stock_changes)
                     st.dataframe(changes_df, use_container_width=True, hide_index=True)
-            except:
-                st.info("No detailed stock changes available")
+                else:
+                    st.info("No stock changes available for this rebalance")
+            except Exception as e:
+                st.info("No detailed stock changes available yet")
     else:
         st.info("⏳ No rebalance events recorded yet.")
