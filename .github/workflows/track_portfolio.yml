@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '5,20,35,50 13-20 * * 1-5'
   workflow_dispatch:
+  repository_dispatch:
+    types: [track-trigger]
 
 jobs:
   track:
@@ -20,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       
-      - name: Pull latest changes (including database)
+      - name: Pull latest changes
         run: |
           git fetch origin main
           git reset --hard origin/main
@@ -40,22 +42,7 @@ jobs:
           print(f'Tracked: {current_value:,.0f} kr')
           EOF
       
-      - name: Verify database
-        run: |
-          python << 'EOF'
-          import sqlite3
-          conn = sqlite3.connect('data/portfolio_metrics.db')
-          cursor = conn.cursor()
-          cursor.execute("SELECT COUNT(*) FROM intraday_values")
-          count = cursor.fetchone()[0]
-          cursor.execute("SELECT MAX(timestamp) FROM intraday_values")
-          latest = cursor.fetchone()[0]
-          print(f'Total intraday records: {count}')
-          print(f'Latest timestamp: {latest}')
-          conn.close()
-          EOF
-      
-      - name: Commit and push changes
+      - name: Commit changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
