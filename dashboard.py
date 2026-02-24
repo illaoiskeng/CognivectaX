@@ -119,48 +119,42 @@ def get_return_sign(ret: float) -> str:
         return "N/A"
     return "+" if ret >= 0 else ""
 
-def generate_intraday_data(daily_data: pd.Series, interval: str) -> pd.Series:
-    """Generate intraday data from daily data by interpolating"""
+def generate_intraday_data_all_periods(daily_data: pd.Series, interval: str) -> pd.Series:
+    """Generate intraday data for any period by interpolating between daily closes"""
     if len(daily_data) == 0:
         return daily_data
     
-    # Create time range from previous close to current close
-    last_date = daily_data.index[-1]
+    intraday_series = []
     
-    # If we have at least 2 data points, use the previous day's close time
-    if len(daily_data) >= 2:
-        prev_date = daily_data.index[-2]
-        # Previous trading day at 4 PM EST (16:00)
-        start_time = pd.Timestamp(prev_date.date()) + timedelta(hours=16)
-    else:
-        # If only 1 data point, go back 24 hours from 4 PM
-        start_time = pd.Timestamp(last_date.date()) + timedelta(hours=16) - timedelta(hours=24)
+    for i in range(len(daily_data)):
+        current_date = daily_data.index[i]
+        current_value = daily_data.iloc[i]
+        
+        # Set close time to 4 PM EST (16:00)
+        close_time = pd.Timestamp(current_date.date()) + timedelta(hours=16)
+        
+        # For first data point, go back 24 hours; for others, use previous close
+        if i == 0:
+            start_time = close_time - timedelta(hours=24)
+        else:
+            prev_close = pd.Timestamp(daily_data.index[i-1].date()) + timedelta(hours=16)
+            start_time = prev_close
+        
+        # Generate time range based on interval
+        time_range = pd.date_range(start=start_time, end=close_time, freq=interval)
+        
+        # Create series for this day (all same value - no intraday movement)
+        day_series = pd.Series(
+            np.full(len(time_range), current_value),
+            index=time_range
+        )
+        
+        intraday_series.append(day_series)
     
-    # Current trading day at 4 PM EST (16:00)
-    end_time = pd.Timestamp(last_date.date()) + timedelta(hours=16)
-    
-    # Create range based on interval
-    intraday_index = pd.date_range(start=start_time, end=end_time, freq=interval)
-    
-    # For now, use the daily value for all intraday points (linear interpolation)
-    intraday_data = pd.Series(
-        np.full(len(intraday_index), daily_data.iloc[-1]),
-        index=intraday_index
-    )
-    
-    return intraday_data
-
-def resample_data(data: pd.Series, interval: str) -> pd.Series:
-    """Resample data to specified interval, with fallback"""
-    try:
-        resampled = data.resample(interval).last()
-        # If resampling resulted in empty data, return original
-        if len(resampled) == 0:
-            return data
-        return resampled
-    except Exception:
-        # If resample fails, return original data
-        return data
+    # Combine all days
+    result = pd.concat(intraday_series)
+    result = result[~result.index.duplicated(keep='last')]
+    return result.sort_index()
 
 def calculate_return_from_now(equity_value: float, current_value: float) -> float:
     """Calculate return percentage from a point to now"""
@@ -169,12 +163,8 @@ def calculate_return_from_now(equity_value: float, current_value: float) -> floa
     return (current_value / equity_value - 1.0) * 100
 
 def filter_market_hours(data: pd.Series, period: str) -> pd.Series:
-    """Filter data to only include US market hours (only for intraday periods)"""
-    # Only apply market hours filter for intraday periods (1D, 1U)
-    if period not in ["1D", "1U"]:
-        return data
-    
-    # Apply market hours filter
+    """Filter data to only include US market hours (9:30 AM - 4:00 PM EST)"""
+    # Apply market hours filter for all periods
     market_data = data[data.index.map(is_market_hours)]
     # If filtering resulted in empty data, return original
     if len(market_data) == 0:
@@ -369,16 +359,12 @@ if current_config["days"] is not None:
     cutoff = rounded_now - timedelta(days=current_config["days"])
     eq_plot = eq_plot[eq_plot.index >= cutoff]
 
-# Special handling for 1D: generate intraday data
-if current_period == "1D" and len(eq_plot) > 0:
-    # Generate intraday data points for the last day
-    eq_plot_intraday = generate_intraday_data(eq_plot, selected_interval)
-    eq_plot_filtered = eq_plot_intraday
-else:
-    # Filter to market hours only (only for intraday periods)
-    eq_plot_filtered = filter_market_hours(eq_plot, current_period)
-    # Resample data based on selected interval (with fallback)
-    eq_plot_filtered = resample_data(eq_plot_filtered, selected_interval)
+# Generate intraday data for all periods
+eq_plot_intraday = generate_intraday_data_all_periods(eq_plot, selected_interval)
+eq_plot_filtered = eq_plot_intraday
+
+# Filter to market hours only (for all periods)
+eq_plot_filtered = filter_market_hours(eq_plot_filtered, current_period)
 
 # Remove NaN values
 eq_plot_filtered = eq_plot_filtered.dropna()
