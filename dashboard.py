@@ -60,6 +60,14 @@ def load_intraday_data_from_db(db_path: str, days: int = None) -> pd.DataFrame:
     
     return intraday_df
 
+def remove_weekends(data: pd.DataFrame) -> pd.DataFrame:
+    """Remove Saturday (5) and Sunday (6) data"""
+    if len(data) == 0:
+        return data
+    
+    mask = data['timestamp'].dt.weekday < 5  # 0-4 = Mon-Fri
+    return data[mask].copy()
+
 def is_market_hours(timestamp: pd.Timestamp) -> bool:
     """Check if timestamp is within US market hours (9:30 AM - 4:00 PM EST)"""
     try:
@@ -174,7 +182,7 @@ def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
     if len(market_data) == 0:
         return data
     
-    return market_data
+    return market_data.copy()
 
 def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
     """Generate appropriate tick positions and format based on period"""
@@ -364,24 +372,25 @@ all_intraday_df = load_intraday_data_from_db(DATA_METRICS_DB, days=365)
 if len(all_intraday_df) == 0:
     st.warning("No intraday data available in database. Please check if tracking is running.")
 else:
-    # Calculate cutoff time based on period
+    # Step 1: Remove weekends
+    weekday_data = remove_weekends(all_intraday_df)
+    
+    # Step 2: Calculate cutoff time based on period
     now = pd.Timestamp.now()
     
     if current_config["days"] is not None:
-        # Calculate cutoff based on market hours
         cutoff_time = now - timedelta(days=current_config["days"])
     else:
-        # For max, use all data
-        cutoff_time = all_intraday_df['timestamp'].min()
+        cutoff_time = weekday_data['timestamp'].min()
     
-    # Filter to time period
-    period_data = all_intraday_df[all_intraday_df['timestamp'] >= cutoff_time].copy()
+    # Step 3: Filter to time period
+    period_data = weekday_data[weekday_data['timestamp'] >= cutoff_time].copy()
     
-    # Filter to market hours only
-    period_data_market = filter_market_hours(period_data)
+    # Step 4: Filter to market hours FIRST
+    market_hours_data = filter_market_hours(period_data)
     
-    # Resample to selected interval
-    eq_plot_resampled = resample_intraday_data(period_data_market, selected_interval)
+    # Step 5: Resample to selected interval
+    eq_plot_resampled = resample_intraday_data(market_hours_data, selected_interval)
     
     # Remove NaN values
     eq_plot_filtered = eq_plot_resampled.dropna()
