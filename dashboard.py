@@ -124,10 +124,10 @@ def generate_intraday_data(daily_data: pd.Series, interval: str) -> pd.Series:
     if len(daily_data) == 0:
         return daily_data
     
-    # Create time range for the day (9:30 AM - 4:00 PM EST)
+    # Create time range for 24 hours back from now
     last_date = daily_data.index[-1]
-    start_time = last_date.replace(hour=9, minute=30, second=0, microsecond=0)
-    end_time = last_date.replace(hour=16, minute=0, second=0, microsecond=0)
+    start_time = last_date - timedelta(hours=24)  # 24 hours back
+    end_time = last_date  # Until now
     
     # Create range based on interval
     intraday_index = pd.date_range(start=start_time, end=end_time, freq=interval)
