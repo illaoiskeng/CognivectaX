@@ -24,6 +24,11 @@ DATA_METRICS_DB = "data/portfolio_metrics.db"
 START_CAPITAL_DKK = 100_000
 INCEPTION_DATE = "2026-01-01"
 
+# Market hours definition
+MARKET_OPEN = time(9, 30)
+MARKET_CLOSE = time(16, 0)
+MARKET_HOURS_PER_DAY = 6.5  # 9:30 AM to 4:00 PM
+
 # ===== LOAD DATA =====
 @st.cache_data(ttl=5, show_spinner=False)
 def load_weights(path: str) -> pd.DataFrame:
@@ -85,62 +90,41 @@ def is_market_hours(timestamp: pd.Timestamp) -> bool:
             return False
         
         # 9:30 AM to 4:00 PM
-        market_open = time(9, 30)
-        market_close = time(16, 0)
-        
-        return market_open <= time_only < market_close
+        return MARKET_OPEN <= time_only <= MARKET_CLOSE
     except Exception:
         return False
 
-# Load data
-try:
-    weights = load_weights(DATA_WEIGHTS)
-except Exception as e:
-    st.error(f"Could not load weights: {e}")
-    st.stop()
+def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
+    """Filter data to only include US market hours (9:30 AM - 4:00 PM EST)"""
+    if len(data) == 0:
+        return data
+    
+    # Apply market hours filter
+    mask = data['timestamp'].map(is_market_hours)
+    market_data = data[mask]
+    
+    # If filtering resulted in empty data, return original
+    if len(market_data) == 0:
+        return data
+    
+    return market_data.copy()
 
-try:
-    equity_dkk = load_equity(DATA_EQUITY)
-except Exception as e:
-    st.error(f"Could not load equity: {e}")
-    st.stop()
-
-if equity_dkk.empty:
-    st.warning("No equity data yet. Run papertrader first.")
-    st.stop()
-
-# ===== METRICS TRACKING INITIALIZATION =====
-init_tracking()
-
-current_value = float(equity_dkk.iloc[-1])
-current_time = pd.Timestamp.now()
-
-# Track intraday value every 3 minutes
-daily_return_pct = ((current_value / START_CAPITAL_DKK) - 1) * 100
-track_intraday(current_value, daily_return_pct)
-
-# Calculate daily metrics (will only save once per day at close)
-calculate_and_save_daily_metrics(weights['ticker'].tolist(), weights['weight'].tolist(), 
-                                 current_value, equity_dkk)
-
-# ===== CALCULATE METRICS =====
-def get_return(trading_days: int) -> float:
-    """Calculate return over N trading days"""
-    if len(equity_dkk) <= trading_days:
-        return np.nan
-    return float(equity_dkk.iloc[-1] / equity_dkk.iloc[-trading_days] - 1.0)
-
-def get_return_color(ret: float) -> str:
-    """Return color based on return value"""
-    if np.isnan(ret):
-        return "#999999"
-    return "#00AA00" if ret >= 0 else "#FF4444"
-
-def get_return_sign(ret: float) -> str:
-    """Return sign for positive/negative"""
-    if np.isnan(ret):
-        return "N/A"
-    return "+" if ret >= 0 else ""
+def get_market_days_cutoff(data: pd.DataFrame, num_market_days: float) -> pd.Timestamp:
+    """
+    Calculate cutoff timestamp for N market days back.
+    Market day = 6.5 hours of trading
+    """
+    if len(data) == 0:
+        return pd.Timestamp.now()
+    
+    # Total hours we need
+    total_hours_needed = num_market_days * MARKET_HOURS_PER_DAY
+    
+    # Start from the latest timestamp and work backwards
+    latest = data['timestamp'].max()
+    cutoff = latest - timedelta(hours=total_hours_needed)
+    
+    return cutoff
 
 def resample_intraday_data(data: pd.DataFrame, interval: str) -> pd.DataFrame:
     """Resample intraday data to specified interval"""
@@ -168,21 +152,6 @@ def calculate_return_from_now(equity_value: float, current_value: float) -> floa
     if current_value == 0 or equity_value == 0:
         return 0
     return (current_value / equity_value - 1.0) * 100
-
-def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
-    """Filter data to only include US market hours (9:30 AM - 4:00 PM EST)"""
-    if len(data) == 0:
-        return data
-    
-    # Apply market hours filter
-    mask = data['timestamp'].map(is_market_hours)
-    market_data = data[mask]
-    
-    # If filtering resulted in empty data, return original
-    if len(market_data) == 0:
-        return data
-    
-    return market_data.copy()
 
 def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
     """Generate appropriate tick positions and format based on period"""
@@ -244,6 +213,50 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
         tick_positions = pd.to_datetime(dates).to_period('M').unique()
         tick_positions = [p.to_timestamp() for p in tick_positions]
         return sorted(tick_positions), tick_format
+
+# Load data
+try:
+    weights = load_weights(DATA_WEIGHTS)
+except Exception as e:
+    st.error(f"Could not load weights: {e}")
+    st.stop()
+
+try:
+    equity_dkk = load_equity(DATA_EQUITY)
+except Exception as e:
+    st.error(f"Could not load equity: {e}")
+    st.stop()
+
+if equity_dkk.empty:
+    st.warning("No equity data yet. Run papertrader first.")
+    st.stop()
+
+# ===== METRICS TRACKING INITIALIZATION =====
+init_tracking()
+
+current_value = float(equity_dkk.iloc[-1])
+current_time = pd.Timestamp.now()
+
+# Track intraday value every 3 minutes
+daily_return_pct = ((current_value / START_CAPITAL_DKK) - 1) * 100
+track_intraday(current_value, daily_return_pct)
+
+# Calculate daily metrics (will only save once per day at close)
+calculate_and_save_daily_metrics(weights['ticker'].tolist(), weights['weight'].tolist(), 
+                                 current_value, equity_dkk)
+
+# ===== CALCULATE METRICS =====
+def get_return(trading_days: int) -> float:
+    """Calculate return over N trading days"""
+    if len(equity_dkk) <= trading_days:
+        return np.nan
+    return float(equity_dkk.iloc[-1] / equity_dkk.iloc[-trading_days] - 1.0)
+
+def get_return_sign(ret: float) -> str:
+    """Return sign for positive/negative"""
+    if np.isnan(ret):
+        return "N/A"
+    return "+" if ret >= 0 else ""
 
 inception_return = (current_value / START_CAPITAL_DKK - 1.0)
 
@@ -307,40 +320,40 @@ st.caption(f"Seneste opdatering: {pd.Timestamp.now().strftime('%d. %b. %Y – %H
 if "selected_time_period" not in st.session_state:
     st.session_state.selected_time_period = "1M"
 
-# Time period configuration
+# Time period configuration - in MARKET DAYS
 time_periods = {
     "1D": {
-        "days": 1,
+        "market_days": 1,
         "intervals": ["5min", "15min", "30min"],
-        "description": "24 hours"
+        "description": "1 market day"
     },
     "1U": {
-        "days": 7,
+        "market_days": 5,
         "intervals": ["15min", "30min", "1H"],
-        "description": "7 days"
+        "description": "5 market days"
     },
     "1M": {
-        "days": 30,
+        "market_days": 21,
         "intervals": ["1H", "4H", "1D"],
-        "description": "30 days"
+        "description": "21 market days"
     },
     "3M": {
-        "days": 90,
+        "market_days": 63,
         "intervals": ["4H", "1D", "1W"],
-        "description": "90 days"
+        "description": "63 market days"
     },
     "6M": {
-        "days": 180,
+        "market_days": 126,
         "intervals": ["4H", "1D", "1W"],
-        "description": "180 days"
+        "description": "126 market days"
     },
     "1 ÅR": {
-        "days": 365,
+        "market_days": 252,
         "intervals": ["4H", "1D", "1W"],
-        "description": "365 days"
+        "description": "252 market days"
     },
     "max": {
-        "days": None,
+        "market_days": None,
         "intervals": ["1D", "1W", "1M"],
         "description": "All data"
     },
@@ -366,7 +379,6 @@ with col_interval:
     )
 
 # ===== LOAD AND PROCESS INTRADAY DATA =====
-# Load ALL intraday data from database
 all_intraday_df = load_intraday_data_from_db(DATA_METRICS_DB, days=365)
 
 if len(all_intraday_df) == 0:
@@ -375,22 +387,20 @@ else:
     # Step 1: Remove weekends
     weekday_data = remove_weekends(all_intraday_df)
     
-    # Step 2: Calculate cutoff time based on period
-    now = pd.Timestamp.now()
+    # Step 2: Filter to market hours FIRST
+    market_hours_data = filter_market_hours(weekday_data)
     
-    if current_config["days"] is not None:
-        cutoff_time = now - timedelta(days=current_config["days"])
+    # Step 3: Calculate cutoff based on market days
+    if current_config["market_days"] is not None:
+        cutoff_time = get_market_days_cutoff(market_hours_data, current_config["market_days"])
     else:
-        cutoff_time = weekday_data['timestamp'].min()
+        cutoff_time = market_hours_data['timestamp'].min()
     
-    # Step 3: Filter to time period
-    period_data = weekday_data[weekday_data['timestamp'] >= cutoff_time].copy()
-    
-    # Step 4: Filter to market hours FIRST
-    market_hours_data = filter_market_hours(period_data)
+    # Step 4: Filter to time period (market days)
+    period_data = market_hours_data[market_hours_data['timestamp'] >= cutoff_time].copy()
     
     # Step 5: Resample to selected interval
-    eq_plot_resampled = resample_intraday_data(market_hours_data, selected_interval)
+    eq_plot_resampled = resample_intraday_data(period_data, selected_interval)
     
     # Remove NaN values
     eq_plot_filtered = eq_plot_resampled.dropna()
@@ -701,5 +711,5 @@ with st.expander("🔧 Debug Info"):
         st.write(f"**Antal beholdinger:** {len(weights)}")
         if len(all_intraday_df) > 0:
             st.write(f"**Total intraday data points:** {len(all_intraday_df)}")
-            st.write(f"**Data range:** {all_intraday_df['timestamp'].min()} til {all_intraday_df['timestamp'].max()}")
+            st.write(f"**Market hours data points:** {len(market_hours_data) if 'market_hours_data' in locals() else 'N/A'}")
         st.write(f"**Aktuel værdi (now):** {current_value:,.0f} kr")
