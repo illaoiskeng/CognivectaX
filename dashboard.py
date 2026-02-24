@@ -6,6 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 from datetime import timedelta, datetime, time
+import time as time_module
 
 st.set_page_config(layout="wide")
 st_autorefresh(interval=5000, key="cognivectax_refresh_5s")
@@ -511,16 +512,37 @@ with col_side:
     st.subheader("📈 Allokeringer")
     
     if len(weights) > 0:
-        fig_pie = px.pie(
-            weights,
-            names="ticker",
-            values="weight",
-            title=""
-        )
-        fig_pie.update_traces(
+        # Fetch company names for pie chart hover
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def fetch_company_names(tickers):
+            """Fetch company names from yfinance"""
+            names = {}
+            for ticker in tickers:
+                try:
+                    stock = yf.Ticker(ticker)
+                    names[ticker] = stock.info.get('longName', ticker)
+                    time_module.sleep(0.2)
+                except Exception:
+                    names[ticker] = ticker
+            return names
+        
+        tickers_list = weights['ticker'].tolist()
+        company_names = fetch_company_names(tickers_list)
+        
+        # Create pie chart with company names on hover
+        pie_data = weights.copy()
+        pie_data['company_name'] = pie_data['ticker'].map(company_names)
+        
+        fig_pie = go.Figure()
+        fig_pie.add_trace(go.Pie(
+            labels=pie_data['ticker'],
+            values=pie_data['weight'],
+            hovertemplate="<b>%{customdata[0]}</b><br>Ticker: %{label}<br>Vægt: %{value:.2%}<extra></extra>",
+            customdata=np.array(pie_data['company_name']).reshape(-1, 1),
             textinfo="label+percent",
-            hovertemplate="<b>%{label}</b><br>Vægt: %{value:.2%}<extra></extra>"
-        )
+            textposition="auto"
+        ))
+        
         fig_pie.update_layout(
             showlegend=False,
             height=350,
@@ -534,17 +556,74 @@ with col_side:
 st.markdown("---")
 st.subheader("📋 Beholdinger")
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_stock_data_batch(tickers):
+    """Fetch stock data with rate limiting and batching"""
+    data = {}
+    
+    batch_size = 5
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        for ticker in batch:
+            try:
+                stock = yf.Ticker(ticker)
+                info = stock.info
+                data[ticker] = {
+                    'current_price': info.get('currentPrice', info.get('regularMarketPrice', 0)),
+                    'pe_ratio': info.get('trailingPE', 'N/A'),
+                    'avg_buy_price': info.get('regularMarketPreviousClose', 0)
+                }
+                time_module.sleep(0.2)
+            except Exception as e:
+                data[ticker] = {
+                    'current_price': 0,
+                    'pe_ratio': 'N/A',
+                    'avg_buy_price': 0
+                }
+        
+        if i + batch_size < len(tickers):
+            time_module.sleep(1)
+    
+    return data
+
 if len(weights) > 0:
+    tickers = weights['ticker'].tolist()
+    stock_data = fetch_stock_data_batch(tickers)
+    
     display_weights = weights.copy()
     display_weights["Weight %"] = (display_weights["weight"] * 100).round(2)
-    display_weights = display_weights[["ticker", "Weight %"]].reset_index(drop=True)
-    display_weights.index = display_weights.index + 1
-    display_weights = display_weights.rename(columns={"ticker": "Ticker"})
+    
+    display_weights["Avg Buy Price"] = display_weights["ticker"].apply(
+        lambda x: f"${stock_data[x]['avg_buy_price']:.2f}" if stock_data[x]['avg_buy_price'] > 0 else "N/A"
+    )
+    
+    display_weights["Current Price"] = display_weights["ticker"].apply(
+        lambda x: f"${stock_data[x]['current_price']:.2f}" if stock_data[x]['current_price'] > 0 else "N/A"
+    )
+    
+    def calc_gain_loss(row):
+        ticker = row['ticker']
+        if stock_data[ticker]['avg_buy_price'] > 0 and stock_data[ticker]['current_price'] > 0:
+            gain_loss = ((stock_data[ticker]['current_price'] - stock_data[ticker]['avg_buy_price']) / 
+                        stock_data[ticker]['avg_buy_price']) * 100
+            return f"{gain_loss:+.2f}%"
+        return "N/A"
+    
+    display_weights["Gain/Loss %"] = display_weights.apply(calc_gain_loss, axis=1)
+    
+    display_weights["P/E Ratio"] = display_weights["ticker"].apply(
+        lambda x: f"{stock_data[x]['pe_ratio']:.2f}" if isinstance(stock_data[x]['pe_ratio'], (int, float)) else "N/A"
+    )
+    
+    display_table = display_weights[["ticker", "Weight %", "Avg Buy Price", "Current Price", "Gain/Loss %", "P/E Ratio"]].reset_index(drop=True)
+    display_table.index = display_table.index + 1
+    display_table = display_table.rename(columns={"ticker": "Ticker"})
     
     st.dataframe(
-        display_weights,
+        display_table,
         use_container_width=True,
-        height=300
+        height=300,
+        hide_index=False
     )
     
     col_info1, col_info2 = st.columns(2)
