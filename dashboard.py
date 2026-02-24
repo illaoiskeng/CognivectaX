@@ -535,10 +535,10 @@ with col_side:
         
         fig_pie = go.Figure()
         fig_pie.add_trace(go.Pie(
-            labels=pie_data['company_name'],
+            labels=pie_data['ticker'],
             values=pie_data['weight'],
-            hovertemplate="<b>%{label}</b><br>Ticker: %{customdata}<br>Vægt: %{value:.2%}<extra></extra>",
-            customdata=pie_data['ticker'].values,
+            hovertemplate="<b>%{customdata}</b><br>Vægt: %{value:.2%}<extra></extra>",
+            customdata=pie_data['company_name'].values,
             textinfo="label+percent",
             textposition="auto",
             textfont=dict(size=12)
