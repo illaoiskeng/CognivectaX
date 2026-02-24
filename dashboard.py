@@ -47,24 +47,18 @@ def load_equity(path: str) -> pd.Series:
     eq = eq[eq.index >= pd.Timestamp(INCEPTION_DATE)]
     return eq
 
-def load_intraday_data(db_path: str, days: int = 30) -> pd.Series:
-    """Load actual intraday portfolio values from database"""
-    intraday_df = get_intraday_values(db_path, days=days)
+def load_intraday_data_from_db(db_path: str, days: int = None) -> pd.DataFrame:
+    """Load intraday data from database as DataFrame"""
+    intraday_df = get_intraday_values(db_path, days=days if days else 365)
     
     if intraday_df is None or len(intraday_df) == 0:
-        return pd.Series()
+        return pd.DataFrame()
     
     # Convert timestamp to datetime and sort
     intraday_df['timestamp'] = pd.to_datetime(intraday_df['timestamp'])
     intraday_df = intraday_df.sort_values('timestamp')
     
-    # Create series with timestamp index
-    intraday_series = pd.Series(
-        intraday_df['portfolio_value'].values,
-        index=intraday_df['timestamp']
-    )
-    
-    return intraday_series
+    return intraday_df
 
 def is_market_hours(timestamp: pd.Timestamp) -> bool:
     """Check if timestamp is within US market hours (9:30 AM - 4:00 PM EST)"""
@@ -140,18 +134,25 @@ def get_return_sign(ret: float) -> str:
         return "N/A"
     return "+" if ret >= 0 else ""
 
-def resample_intraday_data(data: pd.Series, interval: str) -> pd.Series:
+def resample_intraday_data(data: pd.DataFrame, interval: str) -> pd.DataFrame:
     """Resample intraday data to specified interval"""
     if len(data) == 0:
         return data
     
     try:
-        resampled = data.resample(interval).last()
+        # Set timestamp as index for resampling
+        data_indexed = data.set_index('timestamp')
+        resampled = data_indexed['portfolio_value'].resample(interval).last()
+        
         # If resampling resulted in empty data, return original
         if len(resampled) == 0:
             return data
-        return resampled
-    except Exception:
+        
+        result = resampled.reset_index()
+        result.columns = ['timestamp', 'portfolio_value']
+        return result
+    except Exception as e:
+        print(f"Error resampling: {e}")
         return data
 
 def calculate_return_from_now(equity_value: float, current_value: float) -> float:
@@ -160,17 +161,26 @@ def calculate_return_from_now(equity_value: float, current_value: float) -> floa
         return 0
     return (current_value / equity_value - 1.0) * 100
 
-def filter_market_hours(data: pd.Series) -> pd.Series:
+def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
     """Filter data to only include US market hours (9:30 AM - 4:00 PM EST)"""
+    if len(data) == 0:
+        return data
+    
     # Apply market hours filter
-    market_data = data[data.index.map(is_market_hours)]
+    mask = data['timestamp'].map(is_market_hours)
+    market_data = data[mask]
+    
     # If filtering resulted in empty data, return original
     if len(market_data) == 0:
         return data
+    
     return market_data
 
 def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
     """Generate appropriate tick positions and format based on period"""
+    if len(data_df) == 0:
+        return [], ""
+    
     dates = data_df["Date"].values
     
     if period == "1D":
@@ -347,87 +357,102 @@ with col_interval:
         label_visibility="collapsed"
     )
 
-# Load REAL intraday data from database
-intraday_data = load_intraday_data(DATA_METRICS_DB, days=current_config["days"] if current_config["days"] else 365)
+# ===== LOAD AND PROCESS INTRADAY DATA =====
+# Load ALL intraday data from database
+all_intraday_df = load_intraday_data_from_db(DATA_METRICS_DB, days=365)
 
-# Filter to market hours only
-intraday_data = filter_market_hours(intraday_data)
-
-# Resample to selected interval
-eq_plot_resampled = resample_intraday_data(intraday_data, selected_interval)
-
-# Remove NaN values
-eq_plot_filtered = eq_plot_resampled.dropna()
-
-eq_df = eq_plot_filtered.to_frame("CognivectaX").reset_index()
-eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
-
-# Calculate return from EACH point to NOW (current_value)
-if len(eq_df) > 0:
-    eq_df["Change %"] = eq_df["CognivectaX"].apply(
-        lambda x: calculate_return_from_now(x, current_value)
-    )
-    # Format change percentage as string for hover
-    eq_df["Change Text"] = eq_df["Change %"].apply(lambda x: f"{x:+.2f}")
-
-# Check if we have data
-if len(eq_df) == 0:
-    st.warning(f"No intraday data available for period {current_period}. Please check database.")
+if len(all_intraday_df) == 0:
+    st.warning("No intraday data available in database. Please check if tracking is running.")
 else:
-    # Calculate y-axis range with padding
-    min_value = eq_df["CognivectaX"].min()
-    max_value = eq_df["CognivectaX"].max()
-    value_range = max_value - min_value
+    # Calculate cutoff time based on period
+    now = pd.Timestamp.now()
     
-    if value_range == 0:
-        value_range = 1
+    if current_config["days"] is not None:
+        # Calculate cutoff based on market hours
+        cutoff_time = now - timedelta(days=current_config["days"])
+    else:
+        # For max, use all data
+        cutoff_time = all_intraday_df['timestamp'].min()
     
-    y_max = max_value + (value_range * 0.15)
-    y_min = min_value - (value_range * 0.05)
+    # Filter to time period
+    period_data = all_intraday_df[all_intraday_df['timestamp'] >= cutoff_time].copy()
     
-    # Generate tick positions
-    tick_positions, tick_format = generate_tick_positions(eq_df, current_period)
+    # Filter to market hours only
+    period_data_market = filter_market_hours(period_data)
     
-    # Create chart
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=eq_df["Date"],
-        y=eq_df["CognivectaX"],
-        fill='tozeroy',
-        name='CognivectaX',
-        mode='lines',
-        line=dict(color='#1f77b4', width=3),
-        fillcolor='rgba(31, 119, 180, 0.15)',
-        hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<br>Change till now: %{text}%<extra></extra>",
-        text=eq_df["Change Text"]
-    ))
-
-    fig.update_layout(
-        title="",
-        xaxis_title="",
-        yaxis_title="Portfolio Værdi (DKK)",
-        hovermode='x unified',
-        template='plotly_white',
-        height=500,
-        margin=dict(l=50, r=50, t=20, b=50),
-        xaxis=dict(
-            gridcolor='#f0f0f0',
-            showgrid=True,
-            tickformat=tick_format,
-            tickvals=tick_positions,
-            ticktext=[t.strftime(tick_format) if isinstance(t, pd.Timestamp) else str(t) for t in tick_positions],
-            tickmode='array',
-        ),
-        yaxis=dict(
-            gridcolor='#f0f0f0',
-            showgrid=True,
-            tickformat=',.0f',
-            range=[y_min, y_max]
+    # Resample to selected interval
+    eq_plot_resampled = resample_intraday_data(period_data_market, selected_interval)
+    
+    # Remove NaN values
+    eq_plot_filtered = eq_plot_resampled.dropna()
+    
+    if len(eq_plot_filtered) > 0:
+        eq_df = eq_plot_filtered.copy()
+        eq_df = eq_df.rename(columns={'timestamp': 'Date', 'portfolio_value': 'CognivectaX'})
+        
+        # Calculate return from EACH point to NOW (current_value)
+        eq_df["Change %"] = eq_df["CognivectaX"].apply(
+            lambda x: calculate_return_from_now(x, current_value)
         )
-    )
+        # Format change percentage as string for hover
+        eq_df["Change Text"] = eq_df["Change %"].apply(lambda x: f"{x:+.2f}")
+        
+        # Calculate y-axis range with padding
+        min_value = eq_df["CognivectaX"].min()
+        max_value = eq_df["CognivectaX"].max()
+        value_range = max_value - min_value
+        
+        if value_range == 0:
+            value_range = 1
+        
+        y_max = max_value + (value_range * 0.15)
+        y_min = min_value - (value_range * 0.05)
+        
+        # Generate tick positions
+        tick_positions, tick_format = generate_tick_positions(eq_df, current_period)
+        
+        # Create chart
+        fig = go.Figure()
 
-    st.plotly_chart(fig, use_container_width=True)
+        fig.add_trace(go.Scatter(
+            x=eq_df["Date"],
+            y=eq_df["CognivectaX"],
+            fill='tozeroy',
+            name='CognivectaX',
+            mode='lines',
+            line=dict(color='#1f77b4', width=3),
+            fillcolor='rgba(31, 119, 180, 0.15)',
+            hovertemplate="<b>%{x|%d. %b. %Y %H:%M}</b><br>Værdi: %{y:,.0f} kr<br>Change till now: %{text}%<extra></extra>",
+            text=eq_df["Change Text"]
+        ))
+
+        fig.update_layout(
+            title="",
+            xaxis_title="",
+            yaxis_title="Portfolio Værdi (DKK)",
+            hovermode='x unified',
+            template='plotly_white',
+            height=500,
+            margin=dict(l=50, r=50, t=20, b=50),
+            xaxis=dict(
+                gridcolor='#f0f0f0',
+                showgrid=True,
+                tickformat=tick_format,
+                tickvals=tick_positions,
+                ticktext=[t.strftime(tick_format) if isinstance(t, pd.Timestamp) else str(t) for t in tick_positions],
+                tickmode='array',
+            ),
+            yaxis=dict(
+                gridcolor='#f0f0f0',
+                showgrid=True,
+                tickformat=',.0f',
+                range=[y_min, y_max]
+            )
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning(f"No data available for period {current_period} with interval {selected_interval}.")
 
 # ===== CLICKABLE RETURNS METRICS ROW (Bottom) =====
 st.markdown("---")
@@ -665,6 +690,7 @@ with st.expander("🔧 Debug Info"):
     
     with col_debug2:
         st.write(f"**Antal beholdinger:** {len(weights)}")
-        st.write(f"**Data points på chart:** {len(eq_df)}")
+        if len(all_intraday_df) > 0:
+            st.write(f"**Total intraday data points:** {len(all_intraday_df)}")
+            st.write(f"**Data range:** {all_intraday_df['timestamp'].min()} til {all_intraday_df['timestamp'].max()}")
         st.write(f"**Aktuel værdi (now):** {current_value:,.0f} kr")
-        st.write(f"**Intraday data punkter:** {len(intraday_data)}")
