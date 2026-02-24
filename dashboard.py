@@ -97,10 +97,7 @@ def get_return_sign(ret: float) -> str:
         return "N/A"
     return "+" if ret >= 0 else ""
 
-# Current time
 current_time = pd.Timestamp.now()
-
-# Calculate returns
 ret_1d = get_return(1)
 ret_1w = get_return(5)
 ret_1m = get_return(21)
@@ -140,8 +137,8 @@ with col_header_left:
     </div>
     """, unsafe_allow_html=True)
 
+current_value = equity_dkk.iloc[-1]
 with col_header_right:
-    current_value = equity_dkk.iloc[-1]
     st.markdown(f"""
     <div style="text-align: right; padding: 20px;">
         <div style="font-size: 24px; font-weight: bold; color: #1f77b4;">
@@ -158,11 +155,9 @@ st.markdown("---")
 
 st.caption(f"Seneste opdatering: {pd.Timestamp.now().strftime('%d. %b. %Y – %H:%M:%S')}")
 
-# Initialize session state for time period
 if "selected_time_period" not in st.session_state:
     st.session_state.selected_time_period = "1M"
 
-# Time period configuration
 time_periods = {
     "1D": {
         "days": 1,
@@ -201,12 +196,13 @@ time_periods = {
     },
 }
 
-# Create time period buttons
-period_cols = st.columns(len(time_periods))
-for col, period_name in zip(period_cols, time_periods.keys()):
-    with col:
-        if st.button(period_name, key=f"period_{period_name}"):
+# ===== TIME PERIOD BUTTONS (ORIGINAL CODE) =====
+time_cols = st.columns(len(time_periods))
+for i, (period_name, period_config) in enumerate(time_periods.items()):
+    with time_cols[i]:
+        if st.button(period_name, key=f"btn_{period_name}", use_container_width=True):
             st.session_state.selected_time_period = period_name
+            st.rerun()
 
 current_period = st.session_state.selected_time_period
 
@@ -227,10 +223,8 @@ with col_interval:
         label_visibility="collapsed"
     )
 
-# Get current time rounded to nearest hour
 rounded_now = current_time.replace(minute=0, second=0, microsecond=0)
 
-# Prepare data based on selected time period
 eq_plot = equity_dkk.copy()
 
 if current_config["days"] is not None:
@@ -272,11 +266,9 @@ eq_df["Change %"] = eq_df["CognivectaX"].pct_change() * 100
 eq_df.loc[0, "Change %"] = (eq_df.loc[0, "CognivectaX"] / equity_dkk.iloc[0] - 1) * 100
 eq_df["Change Text"] = eq_df["Change %"].apply(lambda x: f"{x:+.2f}")
 
-# Check if we have data
 if len(eq_df) == 0:
     st.warning(f"No data available for period {current_period}.")
 else:
-    # Calculate y-axis range with padding
     min_value = eq_df["CognivectaX"].min()
     max_value = eq_df["CognivectaX"].max()
     value_range = max_value - min_value
@@ -302,10 +294,8 @@ else:
         
         return tick_positions, tick_format
 
-    # Generate tick positions
     tick_positions, tick_format = generate_tick_positions(eq_df, current_period)
     
-    # Create chart
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
@@ -383,7 +373,6 @@ for col, (label, ret) in zip(ret_cols, returns_data):
             </div>
             """, unsafe_allow_html=True)
 
-
 # ===== MAIN CONTENT AREA =====
 st.markdown("---")
 
@@ -409,7 +398,7 @@ with col_side:
     st.subheader("📈 Allokeringer")
     
     if len(weights) > 0:
-        # Fetch company names
+        # Fetch company names for pie chart hover
         @st.cache_data(ttl=3600, show_spinner=False)
         def fetch_company_names(tickers):
             """Fetch company names from yfinance"""
@@ -458,7 +447,6 @@ def fetch_stock_data_batch(tickers):
     """Fetch stock data with rate limiting and batching"""
     data = {}
     
-    # Fetch in smaller batches with delays
     batch_size = 5
     for i in range(0, len(tickers), batch_size):
         batch = tickers[i:i+batch_size]
@@ -485,15 +473,12 @@ def fetch_stock_data_batch(tickers):
     return data
 
 if len(weights) > 0:
-    # Fetch stock data with better caching
     tickers = weights['ticker'].tolist()
     stock_data = fetch_stock_data_batch(tickers)
     
-    # Build enhanced holdings table
     display_weights = weights.copy()
     display_weights["Weight %"] = (display_weights["weight"] * 100).round(2)
     
-    # Add new columns
     display_weights["Avg Buy Price"] = display_weights["ticker"].apply(
         lambda x: f"${stock_data[x]['avg_buy_price']:.2f}" if stock_data[x]['avg_buy_price'] > 0 else "N/A"
     )
@@ -502,7 +487,6 @@ if len(weights) > 0:
         lambda x: f"${stock_data[x]['current_price']:.2f}" if stock_data[x]['current_price'] > 0 else "N/A"
     )
     
-    # Calculate gain/loss %
     def calc_gain_loss(row):
         ticker = row['ticker']
         if stock_data[ticker]['avg_buy_price'] > 0 and stock_data[ticker]['current_price'] > 0:
@@ -517,7 +501,6 @@ if len(weights) > 0:
         lambda x: f"{stock_data[x]['pe_ratio']:.2f}" if isinstance(stock_data[x]['pe_ratio'], (int, float)) else "N/A"
     )
     
-    # Select and reorder columns
     display_table = display_weights[["ticker", "Weight %", "Avg Buy Price", "Current Price", "Gain/Loss %", "P/E Ratio"]].reset_index(drop=True)
     display_table.index = display_table.index + 1
     display_table = display_table.rename(columns={"ticker": "Ticker"})
