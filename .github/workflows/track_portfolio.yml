@@ -2,11 +2,11 @@ name: Track Portfolio Intraday
 
 on:
   schedule:
-    # Runs every 15 minutes at :05, :20, :35, :50 from 2:00 PM UTC to 8:00 PM UTC
+    # Runs every 15 minutes at :05, :20, :35, :50 from 1:00 PM UTC to 8:00 PM UTC
     # This is 5 minutes AFTER papertrade runs, ensuring fresh data is available
     # Market opens at 9:30 AM EST = 2:30 PM UTC (14:30)
     # Market closes at 4:00 PM EST = 9:00 PM UTC (21:00)
-    - cron: '5,20,35,50 14-20 * * 1-5'
+    - cron: '5,20,35,50 13-20 * * 1-5'
   workflow_dispatch:
 
 jobs:
