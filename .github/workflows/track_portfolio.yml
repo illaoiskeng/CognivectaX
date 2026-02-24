@@ -2,10 +2,6 @@ name: Track Portfolio Intraday
 
 on:
   schedule:
-    # Runs every 15 minutes at :05, :20, :35, :50 from 1:00 PM UTC to 8:00 PM UTC
-    # This is 5 minutes AFTER papertrade runs, ensuring fresh data is available
-    # Market opens at 9:30 AM EST = 2:30 PM UTC (14:30)
-    # Market closes at 4:00 PM EST = 9:00 PM UTC (21:00)
     - cron: '5,20,35,50 13-20 * * 1-5'
   workflow_dispatch:
 
@@ -14,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       
       - uses: actions/setup-python@v4
         with:
@@ -22,8 +20,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       
-      - name: Pull latest data
-        run: git pull origin main
+      - name: Pull latest changes (including database)
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
       
       - name: Track portfolio
         run: |
@@ -40,10 +40,26 @@ jobs:
           print(f'Tracked: {current_value:,.0f} kr')
           EOF
       
-      - name: Commit changes
+      - name: Verify database
+        run: |
+          python << 'EOF'
+          import sqlite3
+          conn = sqlite3.connect('data/portfolio_metrics.db')
+          cursor = conn.cursor()
+          cursor.execute("SELECT COUNT(*) FROM intraday_values")
+          count = cursor.fetchone()[0]
+          cursor.execute("SELECT MAX(timestamp) FROM intraday_values")
+          latest = cursor.fetchone()[0]
+          print(f'Total intraday records: {count}')
+          print(f'Latest timestamp: {latest}')
+          conn.close()
+          EOF
+      
+      - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add data/portfolio_metrics.db
-          git commit -m "Track intraday portfolio value" || true
+          git diff --cached --exit-code || git commit -m "Track intraday portfolio value at $(date -u +'%H:%M UTC')"
           git push origin main
+        continue-on-error: true
