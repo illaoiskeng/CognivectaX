@@ -43,7 +43,6 @@ def load_equity(path: str) -> pd.Series:
 def is_market_hours(timestamp: pd.Timestamp) -> bool:
     """Check if timestamp is within US market hours (9:30 AM - 4:00 PM EST)"""
     try:
-        # Handle both timezone-aware and timezone-naive timestamps
         if timestamp.tz is None:
             ts_est = timestamp.tz_localize('UTC').tz_convert('US/Eastern')
         else:
@@ -52,11 +51,9 @@ def is_market_hours(timestamp: pd.Timestamp) -> bool:
         time_only = ts_est.time()
         weekday = ts_est.weekday()
         
-        # Weekday 0-4 = Monday-Friday
         if weekday > 4:
             return False
         
-        # 9:30 AM to 4:00 PM
         market_open = time(9, 30)
         market_close = time(16, 0)
         
@@ -203,6 +200,13 @@ time_periods = {
         "description": "All data"
     },
 }
+
+# Create time period buttons
+period_cols = st.columns(len(time_periods))
+for col, period_name in zip(period_cols, time_periods.keys()):
+    with col:
+        if st.button(period_name, key=f"period_{period_name}"):
+            st.session_state.selected_time_period = period_name
 
 current_period = st.session_state.selected_time_period
 
@@ -430,8 +434,8 @@ with col_side:
         fig_pie.add_trace(go.Pie(
             labels=pie_data['ticker'],
             values=pie_data['weight'],
-            hovertemplate="<b>%{customdata}</b><br>Ticker: %{label}<br>Vægt: %{value:.2%}<extra></extra>",
-            customdata=pie_data['company_name'],
+            hovertemplate="<b>%{customdata[0]}</b><br>Ticker: %{label}<br>Vægt: %{value:.2%}<extra></extra>",
+            customdata=np.array(pie_data['company_name']).reshape(-1, 1),
             textinfo="label+percent",
             textposition="auto"
         ))
@@ -467,7 +471,7 @@ def fetch_stock_data_batch(tickers):
                     'pe_ratio': info.get('trailingPE', 'N/A'),
                     'avg_buy_price': info.get('regularMarketPreviousClose', 0)
                 }
-                time_module.sleep(0.2)  # Small delay between requests
+                time_module.sleep(0.2)
             except Exception as e:
                 data[ticker] = {
                     'current_price': 0,
@@ -475,7 +479,6 @@ def fetch_stock_data_batch(tickers):
                     'avg_buy_price': 0
                 }
         
-        # Delay between batches
         if i + batch_size < len(tickers):
             time_module.sleep(1)
     
