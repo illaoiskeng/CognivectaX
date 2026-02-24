@@ -661,27 +661,23 @@ with tab3:
 
 # ===== DEBUG INFO =====
 with st.expander("🔧 Debug Info"):
-    col_debug1, col_debug2 = st.columns(2)
+    st.write("**=== RAW DATA ===**")
+    st.write(f"all_intraday_df length: {len(all_intraday_df)}")
+    if len(all_intraday_df) > 0:
+        st.write(f"all_intraday_df date range: {all_intraday_df['timestamp'].min()} to {all_intraday_df['timestamp'].max()}")
+        st.write(f"all_intraday_df unique dates: {sorted(all_intraday_df['timestamp'].dt.date.unique())}")
     
-    with col_debug1:
-        st.write(f"**Equity curve længde:** {len(equity_dkk)}")
-        st.write(f"**Dato interval:** {equity_dkk.index[0]} til {equity_dkk.index[-1]}")
-        st.write(f"**Valgt periode:** {current_period}")
-        st.write(f"**Valgt interval:** {selected_interval}")
+    st.write("**=== AFTER WEEKENDS REMOVED ===**")
+    st.write(f"weekday_data length: {len(weekday_data) if 'weekday_data' in locals() else 'N/A'}")
+    if 'weekday_data' in locals() and len(weekday_data) > 0:
+        st.write(f"weekday_data unique dates: {sorted(weekday_data['timestamp'].dt.date.unique())}")
     
-    with col_debug2:
-        st.write(f"**Antal beholdinger:** {len(weights)}")
-        if len(all_intraday_df) > 0:
-            st.write(f"**Total intraday data points:** {len(all_intraday_df)}")
-            st.write(f"**Weekday data points:** {len(weekday_data) if 'weekday_data' in locals() else 'N/A'}")
-            
-            weekday_unique_dates = sorted(weekday_data['timestamp'].dt.date.unique(), reverse=True) if 'weekday_data' in locals() else []
-            st.write(f"**Unique trading dates:** {weekday_unique_dates}")
-            
-            if current_config["trading_days"] is not None:
-                st.write(f"**Requesting trading days:** {current_config['trading_days']}")
-                st.write(f"**Calculated cutoff:** {cutoff_time if 'cutoff_time' in locals() else 'N/A'}")
-            
-            st.write(f"**Period data points:** {len(period_data) if 'period_data' in locals() else 'N/A'}")
-            st.write(f"**Resampled data points:** {len(eq_plot_filtered) if 'eq_plot_filtered' in locals() else 'N/A'}")
-        st.write(f"**Aktuel værdi (now):** {current_value:,.0f} kr")
+    st.write("**=== AFTER TIME PERIOD FILTER ===**")
+    st.write(f"cutoff_time: {cutoff_time if 'cutoff_time' in locals() else 'N/A'}")
+    st.write(f"period_data length: {len(period_data) if 'period_data' in locals() else 'N/A'}")
+    if 'period_data' in locals() and len(period_data) > 0:
+        st.write(f"period_data date range: {period_data['timestamp'].min()} to {period_data['timestamp'].max()}")
+        st.write(f"period_data unique dates: {sorted(period_data['timestamp'].dt.date.unique())}")
+    
+    st.write("**=== AFTER RESAMPLING ===**")
+    st.write(f"eq_plot_filtered length: {len(eq_plot_filtered) if 'eq_plot_filtered' in locals() else 'N/A'}")
