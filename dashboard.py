@@ -22,12 +22,11 @@ DATA_WEIGHTS = "data/weights_latest.csv"
 DATA_EQUITY = "data/papertrade/portfolio_value_daily.csv"
 DATA_METRICS_DB = "data/portfolio_metrics.db"
 START_CAPITAL_DKK = 100_000
-INCEPTION_DATE = "2026-01-01"
+INCEPTION_DATE = "2026-02-19"
 
 # Market hours definition
 MARKET_OPEN = time(9, 30)
 MARKET_CLOSE = time(16, 0)
-MARKET_HOURS_PER_DAY = 6.5  # 9:30 AM to 4:00 PM
 
 # ===== LOAD DATA =====
 @st.cache_data(ttl=5, show_spinner=False)
@@ -65,14 +64,6 @@ def load_intraday_data_from_db(db_path: str, days: int = None) -> pd.DataFrame:
     
     return intraday_df
 
-def remove_weekends(data: pd.DataFrame) -> pd.DataFrame:
-    """Remove Saturday (5) and Sunday (6) data"""
-    if len(data) == 0:
-        return data
-    
-    mask = data['timestamp'].dt.weekday < 5  # 0-4 = Mon-Fri
-    return data[mask].copy()
-
 def is_market_hours(timestamp: pd.Timestamp) -> bool:
     """Check if timestamp is within US market hours (9:30 AM - 4:00 PM EST)"""
     try:
@@ -94,6 +85,14 @@ def is_market_hours(timestamp: pd.Timestamp) -> bool:
     except Exception:
         return False
 
+def remove_weekends(data: pd.DataFrame) -> pd.DataFrame:
+    """Remove Saturday (5) and Sunday (6) data"""
+    if len(data) == 0:
+        return data
+    
+    mask = data['timestamp'].dt.weekday < 5  # 0-4 = Mon-Fri
+    return data[mask].copy()
+
 def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
     """Filter data to only include US market hours (9:30 AM - 4:00 PM EST)"""
     if len(data) == 0:
@@ -109,22 +108,27 @@ def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
     
     return market_data.copy()
 
-def get_market_days_cutoff(data: pd.DataFrame, num_market_days: float) -> pd.Timestamp:
-    """
-    Calculate cutoff timestamp for N market days back.
-    Market day = 6.5 hours of trading
-    """
+def get_trading_days_back(data: pd.DataFrame, num_trading_days: int) -> pd.Timestamp:
+    """Get the cutoff timestamp for N trading days back from latest data"""
     if len(data) == 0:
         return pd.Timestamp.now()
     
-    # Total hours we need
-    total_hours_needed = num_market_days * MARKET_HOURS_PER_DAY
+    # Get unique trading days (dates) in the data
+    unique_dates = data['timestamp'].dt.date.unique()
+    unique_dates = sorted(unique_dates, reverse=True)
     
-    # Start from the latest timestamp and work backwards
-    latest = data['timestamp'].max()
-    cutoff = latest - timedelta(hours=total_hours_needed)
+    if len(unique_dates) <= num_trading_days:
+        # Not enough data, return earliest
+        return data['timestamp'].min()
     
-    return cutoff
+    # Get the Nth trading day back
+    cutoff_date = unique_dates[num_trading_days - 1]
+    cutoff_timestamp = pd.Timestamp(cutoff_date).tz_localize(None)
+    
+    # Set to market open time
+    cutoff_timestamp = cutoff_timestamp.replace(hour=9, minute=30)
+    
+    return cutoff_timestamp
 
 def resample_intraday_data(data: pd.DataFrame, interval: str) -> pd.DataFrame:
     """Resample intraday data to specified interval"""
@@ -165,7 +169,6 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
         tick_format = "%H:%M"
         tick_positions = pd.to_datetime(dates).floor('H').unique()
         tick_positions = sorted(tick_positions)
-        # Fallback: if no hourly data, show all points
         if len(tick_positions) == 0:
             tick_positions = pd.to_datetime(dates).unique()
         return tick_positions, tick_format
@@ -320,40 +323,40 @@ st.caption(f"Seneste opdatering: {pd.Timestamp.now().strftime('%d. %b. %Y – %H
 if "selected_time_period" not in st.session_state:
     st.session_state.selected_time_period = "1M"
 
-# Time period configuration - in MARKET DAYS
+# Time period configuration - in TRADING DAYS
 time_periods = {
     "1D": {
-        "market_days": 1,
+        "trading_days": 1,
         "intervals": ["5min", "15min", "30min"],
-        "description": "1 market day"
+        "description": "1 trading day"
     },
     "1U": {
-        "market_days": 5,
+        "trading_days": 5,
         "intervals": ["15min", "30min", "1H"],
-        "description": "5 market days"
+        "description": "5 trading days"
     },
     "1M": {
-        "market_days": 21,
+        "trading_days": 20,
         "intervals": ["1H", "4H", "1D"],
-        "description": "21 market days"
+        "description": "20 trading days"
     },
     "3M": {
-        "market_days": 63,
+        "trading_days": 60,
         "intervals": ["4H", "1D", "1W"],
-        "description": "63 market days"
+        "description": "60 trading days"
     },
     "6M": {
-        "market_days": 126,
+        "trading_days": 120,
         "intervals": ["4H", "1D", "1W"],
-        "description": "126 market days"
+        "description": "120 trading days"
     },
     "1 ÅR": {
-        "market_days": 252,
+        "trading_days": 252,
         "intervals": ["4H", "1D", "1W"],
-        "description": "252 market days"
+        "description": "252 trading days"
     },
     "max": {
-        "market_days": None,
+        "trading_days": None,
         "intervals": ["1D", "1W", "1M"],
         "description": "All data"
     },
@@ -390,14 +393,17 @@ else:
     # Step 2: Filter to market hours FIRST
     market_hours_data = filter_market_hours(weekday_data)
     
-    # Step 3: Calculate cutoff based on market days
-    if current_config["market_days"] is not None:
-        cutoff_time = get_market_days_cutoff(market_hours_data, current_config["market_days"])
+    # Step 3: Calculate cutoff based on trading days
+    if current_config["trading_days"] is not None:
+        cutoff_time = get_trading_days_back(market_hours_data, current_config["trading_days"])
     else:
         cutoff_time = market_hours_data['timestamp'].min()
     
-    # Step 4: Filter to time period (market days)
-    period_data = market_hours_data[market_hours_data['timestamp'] >= cutoff_time].copy()
+    # Step 4: Filter to time period (trading days) - from cutoff to NOW
+    period_data = market_hours_data[
+        (market_hours_data['timestamp'] >= cutoff_time) & 
+        (market_hours_data['timestamp'] <= current_time)
+    ].copy()
     
     # Step 5: Resample to selected interval
     eq_plot_resampled = resample_intraday_data(period_data, selected_interval)
@@ -559,7 +565,6 @@ with col_side:
     st.subheader("📈 Allokeringer")
     
     if len(weights) > 0:
-        # Fetch company names for pie chart hover
         @st.cache_data(ttl=3600, show_spinner=False)
         def fetch_company_names(tickers):
             """Fetch company names from yfinance"""
@@ -576,7 +581,6 @@ with col_side:
         tickers_list = weights['ticker'].tolist()
         company_names = fetch_company_names(tickers_list)
         
-        # Create pie chart with company names
         pie_data = weights.copy()
         pie_data['company_name'] = pie_data['ticker'].map(company_names)
         
@@ -712,4 +716,5 @@ with st.expander("🔧 Debug Info"):
         if len(all_intraday_df) > 0:
             st.write(f"**Total intraday data points:** {len(all_intraday_df)}")
             st.write(f"**Market hours data points:** {len(market_hours_data) if 'market_hours_data' in locals() else 'N/A'}")
+            st.write(f"**Period data points:** {len(period_data) if 'period_data' in locals() else 'N/A'}")
         st.write(f"**Aktuel værdi (now):** {current_value:,.0f} kr")
