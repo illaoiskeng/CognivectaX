@@ -7,6 +7,11 @@ import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 from datetime import timedelta, datetime, time
 import time as time_module
+from dashboard_metrics import (
+    init_tracking, track_intraday, calculate_and_save_daily_metrics,
+    calculate_and_save_monthly_metrics,
+    display_daily_metrics, display_monthly_metrics, display_rebalance_history
+)
 
 st.set_page_config(layout="wide")
 st_autorefresh(interval=5000, key="cognivectax_refresh_5s")
@@ -80,6 +85,20 @@ except Exception as e:
 if equity_dkk.empty:
     st.warning("No equity data yet. Run papertrader first.")
     st.stop()
+
+# ===== METRICS TRACKING INITIALIZATION =====
+init_tracking()
+
+current_value = float(equity_dkk.iloc[-1])
+current_time = pd.Timestamp.now()
+
+# Track intraday value every 3 minutes
+daily_return_pct = ((current_value / START_CAPITAL_DKK) - 1) * 100
+track_intraday(current_value, daily_return_pct)
+
+# Calculate daily metrics (will only save once per day at close)
+calculate_and_save_daily_metrics(weights['ticker'].tolist(), weights['weight'].tolist(), 
+                                 current_value, equity_dkk)
 
 # ===== CALCULATE METRICS =====
 def get_return(trading_days: int) -> float:
@@ -210,8 +229,6 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
         tick_positions = [p.to_timestamp() for p in tick_positions]
         return sorted(tick_positions), tick_format
 
-current_value = float(equity_dkk.iloc[-1])
-current_time = pd.Timestamp.now()
 inception_return = (current_value / START_CAPITAL_DKK - 1.0)
 
 ret_1d = get_return(1)
@@ -520,14 +537,9 @@ with col_side:
             for ticker in tickers:
                 try:
                     stock = yf.Ticker(ticker)
-                    info = stock.info
-                    name = info.get('longName', None)
-                    if name:
-                        names[ticker] = name
-                    else:
-                        names[ticker] = ticker
-                    time_module.sleep(0.3)
-                except Exception as e:
+                    names[ticker] = stock.info.get('longName', ticker)
+                    time_module.sleep(0.2)
+                except Exception:
                     names[ticker] = ticker
             return names
         
@@ -639,6 +651,21 @@ if len(weights) > 0:
         st.caption(f"**Total vægt:** {weights['weight'].sum()*100:.2f}%")
 else:
     st.info("Ingen beholdinger")
+
+# ===== ANALYTICS & TRACKING SECTION =====
+st.markdown("---")
+st.subheader("📊 Analytics & Tracking")
+
+tab1, tab2, tab3 = st.tabs(["Daily Metrics", "Monthly Summary", "Rebalance History"])
+
+with tab1:
+    display_daily_metrics()
+
+with tab2:
+    display_monthly_metrics()
+
+with tab3:
+    display_rebalance_history()
 
 # ===== DEBUG INFO =====
 with st.expander("🔧 Debug Info"):
