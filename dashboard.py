@@ -87,8 +87,8 @@ def get_trading_days_back(data: pd.DataFrame, num_trading_days: int) -> pd.Times
     cutoff_date = unique_dates[days_to_use - 1]
     cutoff_timestamp = pd.Timestamp(cutoff_date).tz_localize(None)
     
-    # Set to market open time (9:30 AM)
-    cutoff_timestamp = cutoff_timestamp.replace(hour=0, minute=0, second=0)
+    # Set to earliest time (00:00:00) to include ALL data from that day
+    cutoff_timestamp = cutoff_timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
     
     return cutoff_timestamp
 
@@ -355,13 +355,13 @@ else:
     # Step 1: Remove weekends
     weekday_data = remove_weekends(all_intraday_df)
     
-    # Step 2: Calculate cutoff based on trading days (no market hours filter)
+    # Step 2: Calculate cutoff based on trading days
     if current_config["trading_days"] is not None:
         cutoff_time = get_trading_days_back(weekday_data, current_config["trading_days"])
     else:
         cutoff_time = weekday_data['timestamp'].min()
     
-    # Step 3: Filter to time period (trading days) - from cutoff to NOW
+    # Step 3: Filter to time period (trading days) - from cutoff to NOW (latest data point)
     period_data = weekday_data[
         (weekday_data['timestamp'] >= cutoff_time) & 
         (weekday_data['timestamp'] <= current_time)
