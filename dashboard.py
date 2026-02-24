@@ -405,16 +405,37 @@ with col_side:
     st.subheader("📈 Allokeringer")
     
     if len(weights) > 0:
-        fig_pie = px.pie(
-            weights,
-            names="ticker",
-            values="weight",
-            title=""
-        )
-        fig_pie.update_traces(
+        # Fetch company names
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def fetch_company_names(tickers):
+            """Fetch company names from yfinance"""
+            names = {}
+            for ticker in tickers:
+                try:
+                    stock = yf.Ticker(ticker)
+                    names[ticker] = stock.info.get('longName', ticker)
+                    time_module.sleep(0.2)
+                except Exception:
+                    names[ticker] = ticker
+            return names
+        
+        tickers_list = weights['ticker'].tolist()
+        company_names = fetch_company_names(tickers_list)
+        
+        # Create pie chart with company names
+        pie_data = weights.copy()
+        pie_data['company_name'] = pie_data['ticker'].map(company_names)
+        
+        fig_pie = go.Figure()
+        fig_pie.add_trace(go.Pie(
+            labels=pie_data['ticker'],
+            values=pie_data['weight'],
+            hovertemplate="<b>%{customdata}</b><br>Ticker: %{label}<br>Vægt: %{value:.2%}<extra></extra>",
+            customdata=pie_data['company_name'],
             textinfo="label+percent",
-            hovertemplate="<b>%{label}</b><br>Vægt: %{value:.2%}<extra></extra>"
-        )
+            textposition="auto"
+        ))
+        
         fig_pie.update_layout(
             showlegend=False,
             height=350,
