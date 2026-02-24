@@ -199,7 +199,7 @@ if equity_dkk.empty:
 init_tracking()
 
 current_value = float(equity_dkk.iloc[-1])
-current_time = pd.Timestamp.now()
+current_time = all_intraday_df['timestamp'].max() if len(all_intraday_df) > 0 else pd.Timestamp.now()
 
 # Track intraday value every 3 minutes
 daily_return_pct = ((current_value / START_CAPITAL_DKK) - 1) * 100
