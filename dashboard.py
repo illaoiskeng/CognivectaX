@@ -130,12 +130,14 @@ def generate_intraday_data(daily_data: pd.Series, interval: str) -> pd.Series:
     # If we have at least 2 data points, use the previous day's close time
     if len(daily_data) >= 2:
         prev_date = daily_data.index[-2]
-        start_time = prev_date.replace(hour=16, minute=0, second=0, microsecond=0)  # Previous close (4 PM EST)
+        # Previous trading day at 4 PM EST (16:00)
+        start_time = pd.Timestamp(prev_date.date()) + timedelta(hours=16)
     else:
-        # If only 1 data point, go back 24 hours
-        start_time = last_date - timedelta(hours=24)
+        # If only 1 data point, go back 24 hours from 4 PM
+        start_time = pd.Timestamp(last_date.date()) + timedelta(hours=16) - timedelta(hours=24)
     
-    end_time = last_date.replace(hour=16, minute=0, second=0, microsecond=0)  # Current close (4 PM EST)
+    # Current trading day at 4 PM EST (16:00)
+    end_time = pd.Timestamp(last_date.date()) + timedelta(hours=16)
     
     # Create range based on interval
     intraday_index = pd.date_range(start=start_time, end=end_time, freq=interval)
