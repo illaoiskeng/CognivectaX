@@ -109,23 +109,24 @@ def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
     return market_data.copy()
 
 def get_trading_days_back(data: pd.DataFrame, num_trading_days: int) -> pd.Timestamp:
-    """Get the cutoff timestamp for N trading days back from latest data"""
+    """
+    Get the cutoff timestamp for N trading days back from latest data.
+    If fewer than N trading days exist, return the earliest available date.
+    """
     if len(data) == 0:
         return pd.Timestamp.now()
     
-    # Get unique trading days (dates) in the data
-    unique_dates = data['timestamp'].dt.date.unique()
-    unique_dates = sorted(unique_dates, reverse=True)
+    # Get unique trading days (dates) in the data, sorted newest first
+    unique_dates = sorted(data['timestamp'].dt.date.unique(), reverse=True)
     
-    if len(unique_dates) <= num_trading_days:
-        # Not enough data, return earliest
-        return data['timestamp'].min()
+    # Determine how many days to go back
+    days_to_use = min(num_trading_days, len(unique_dates))
     
-    # Get the Nth trading day back
-    cutoff_date = unique_dates[num_trading_days - 1]
+    # Get the cutoff date (Nth day back, or earliest if fewer days exist)
+    cutoff_date = unique_dates[days_to_use - 1]
     cutoff_timestamp = pd.Timestamp(cutoff_date).tz_localize(None)
     
-    # Set to market open time
+    # Set to market open time (9:30 AM)
     cutoff_timestamp = cutoff_timestamp.replace(hour=9, minute=30)
     
     return cutoff_timestamp
@@ -717,4 +718,5 @@ with st.expander("🔧 Debug Info"):
             st.write(f"**Total intraday data points:** {len(all_intraday_df)}")
             st.write(f"**Market hours data points:** {len(market_hours_data) if 'market_hours_data' in locals() else 'N/A'}")
             st.write(f"**Period data points:** {len(period_data) if 'period_data' in locals() else 'N/A'}")
+            st.write(f"**Cutoff time:** {cutoff_time if 'cutoff_time' in locals() else 'N/A'}")
         st.write(f"**Aktuel værdi (now):** {current_value:,.0f} kr")
