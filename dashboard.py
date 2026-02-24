@@ -520,9 +520,14 @@ with col_side:
             for ticker in tickers:
                 try:
                     stock = yf.Ticker(ticker)
-                    names[ticker] = stock.info.get('longName', ticker)
-                    time_module.sleep(0.2)
-                except Exception:
+                    info = stock.info
+                    name = info.get('longName', None)
+                    if name:
+                        names[ticker] = name
+                    else:
+                        names[ticker] = ticker
+                    time_module.sleep(0.3)
+                except Exception as e:
                     names[ticker] = ticker
             return names
         
