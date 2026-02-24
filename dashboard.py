@@ -717,6 +717,15 @@ with st.expander("🔧 Debug Info"):
         if len(all_intraday_df) > 0:
             st.write(f"**Total intraday data points:** {len(all_intraday_df)}")
             st.write(f"**Market hours data points:** {len(market_hours_data) if 'market_hours_data' in locals() else 'N/A'}")
+            
+            # NEW DEBUG
+            weekday_unique_dates = sorted(market_hours_data['timestamp'].dt.date.unique(), reverse=True)
+            st.write(f"**Unique trading dates:** {weekday_unique_dates}")
+            
+            if current_config["trading_days"] is not None:
+                cutoff = get_trading_days_back(market_hours_data, current_config["trading_days"])
+                st.write(f"**Requesting trading days:** {current_config['trading_days']}")
+                st.write(f"**Calculated cutoff:** {cutoff}")
+            
             st.write(f"**Period data points:** {len(period_data) if 'period_data' in locals() else 'N/A'}")
-            st.write(f"**Cutoff time:** {cutoff_time if 'cutoff_time' in locals() else 'N/A'}")
         st.write(f"**Aktuel værdi (now):** {current_value:,.0f} kr")
