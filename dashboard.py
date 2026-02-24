@@ -12,6 +12,7 @@ from dashboard_metrics import (
     calculate_and_save_monthly_metrics,
     display_daily_metrics, display_monthly_metrics, display_rebalance_history
 )
+from metrics_tracker import get_intraday_values
 
 st.set_page_config(layout="wide")
 st_autorefresh(interval=5000, key="cognivectax_refresh_5s")
@@ -19,6 +20,7 @@ st_autorefresh(interval=5000, key="cognivectax_refresh_5s")
 # ===== CONFIG =====
 DATA_WEIGHTS = "data/weights_latest.csv"
 DATA_EQUITY = "data/papertrade/portfolio_value_daily.csv"
+DATA_METRICS_DB = "data/portfolio_metrics.db"
 START_CAPITAL_DKK = 100_000
 INCEPTION_DATE = "2026-01-01"
 
@@ -44,6 +46,25 @@ def load_equity(path: str) -> pd.Series:
     eq = pd.Series(df["total_value"].values, index=df["date"], name="equity")
     eq = eq[eq.index >= pd.Timestamp(INCEPTION_DATE)]
     return eq
+
+def load_intraday_data(db_path: str, days: int = 30) -> pd.Series:
+    """Load actual intraday portfolio values from database"""
+    intraday_df = get_intraday_values(db_path, days=days)
+    
+    if intraday_df is None or len(intraday_df) == 0:
+        return pd.Series()
+    
+    # Convert timestamp to datetime and sort
+    intraday_df['timestamp'] = pd.to_datetime(intraday_df['timestamp'])
+    intraday_df = intraday_df.sort_values('timestamp')
+    
+    # Create series with timestamp index
+    intraday_series = pd.Series(
+        intraday_df['portfolio_value'].values,
+        index=intraday_df['timestamp']
+    )
+    
+    return intraday_series
 
 def is_market_hours(timestamp: pd.Timestamp) -> bool:
     """Check if timestamp is within US market hours (9:30 AM - 4:00 PM EST)"""
@@ -119,42 +140,19 @@ def get_return_sign(ret: float) -> str:
         return "N/A"
     return "+" if ret >= 0 else ""
 
-def generate_intraday_data_all_periods(daily_data: pd.Series, interval: str) -> pd.Series:
-    """Generate intraday data for any period by interpolating between daily closes"""
-    if len(daily_data) == 0:
-        return daily_data
+def resample_intraday_data(data: pd.Series, interval: str) -> pd.Series:
+    """Resample intraday data to specified interval"""
+    if len(data) == 0:
+        return data
     
-    intraday_series = []
-    
-    for i in range(len(daily_data)):
-        current_date = daily_data.index[i]
-        current_value = daily_data.iloc[i]
-        
-        # Set close time to 4 PM EST (16:00)
-        close_time = pd.Timestamp(current_date.date()) + timedelta(hours=16)
-        
-        # For first data point, go back 24 hours; for others, use previous close
-        if i == 0:
-            start_time = close_time - timedelta(hours=24)
-        else:
-            prev_close = pd.Timestamp(daily_data.index[i-1].date()) + timedelta(hours=16)
-            start_time = prev_close
-        
-        # Generate time range based on interval
-        time_range = pd.date_range(start=start_time, end=close_time, freq=interval)
-        
-        # Create series for this day (all same value - no intraday movement)
-        day_series = pd.Series(
-            np.full(len(time_range), current_value),
-            index=time_range
-        )
-        
-        intraday_series.append(day_series)
-    
-    # Combine all days
-    result = pd.concat(intraday_series)
-    result = result[~result.index.duplicated(keep='last')]
-    return result.sort_index()
+    try:
+        resampled = data.resample(interval).last()
+        # If resampling resulted in empty data, return original
+        if len(resampled) == 0:
+            return data
+        return resampled
+    except Exception:
+        return data
 
 def calculate_return_from_now(equity_value: float, current_value: float) -> float:
     """Calculate return percentage from a point to now"""
@@ -162,9 +160,9 @@ def calculate_return_from_now(equity_value: float, current_value: float) -> floa
         return 0
     return (current_value / equity_value - 1.0) * 100
 
-def filter_market_hours(data: pd.Series, period: str) -> pd.Series:
+def filter_market_hours(data: pd.Series) -> pd.Series:
     """Filter data to only include US market hours (9:30 AM - 4:00 PM EST)"""
-    # Apply market hours filter for all periods
+    # Apply market hours filter
     market_data = data[data.index.map(is_market_hours)]
     # If filtering resulted in empty data, return original
     if len(market_data) == 0:
@@ -349,25 +347,17 @@ with col_interval:
         label_visibility="collapsed"
     )
 
-# Get current time rounded to nearest hour
-rounded_now = current_time.replace(minute=0, second=0, microsecond=0)
+# Load REAL intraday data from database
+intraday_data = load_intraday_data(DATA_METRICS_DB, days=current_config["days"] if current_config["days"] else 365)
 
-# Prepare data based on selected time period
-eq_plot = equity_dkk.copy()
+# Filter to market hours only
+intraday_data = filter_market_hours(intraday_data)
 
-if current_config["days"] is not None:
-    cutoff = rounded_now - timedelta(days=current_config["days"])
-    eq_plot = eq_plot[eq_plot.index >= cutoff]
-
-# Generate intraday data for all periods
-eq_plot_intraday = generate_intraday_data_all_periods(eq_plot, selected_interval)
-eq_plot_filtered = eq_plot_intraday
-
-# Filter to market hours only (for all periods)
-eq_plot_filtered = filter_market_hours(eq_plot_filtered, current_period)
+# Resample to selected interval
+eq_plot_resampled = resample_intraday_data(intraday_data, selected_interval)
 
 # Remove NaN values
-eq_plot_filtered = eq_plot_filtered.dropna()
+eq_plot_filtered = eq_plot_resampled.dropna()
 
 eq_df = eq_plot_filtered.to_frame("CognivectaX").reset_index()
 eq_df = eq_df.rename(columns={eq_df.columns[0]: "Date"})
@@ -382,7 +372,7 @@ if len(eq_df) > 0:
 
 # Check if we have data
 if len(eq_df) == 0:
-    st.warning(f"No data available for period {current_period}.")
+    st.warning(f"No intraday data available for period {current_period}. Please check database.")
 else:
     # Calculate y-axis range with padding
     min_value = eq_df["CognivectaX"].min()
@@ -677,4 +667,4 @@ with st.expander("🔧 Debug Info"):
         st.write(f"**Antal beholdinger:** {len(weights)}")
         st.write(f"**Data points på chart:** {len(eq_df)}")
         st.write(f"**Aktuel værdi (now):** {current_value:,.0f} kr")
-        st.write(f"**Tick positions:** {len(tick_positions)}")
+        st.write(f"**Intraday data punkter:** {len(intraday_data)}")
