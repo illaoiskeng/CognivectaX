@@ -127,57 +127,54 @@ def generate_tick_positions(data_df: pd.DataFrame, period: str) -> tuple:
     dates = data_df["Date"].values
     
     if period == "1D":
-        # Show every hour (hourly ticks)
+        # Show every 5 minutes
         tick_format = "%H:%M"
-        tick_positions = pd.to_datetime(dates).floor('H').unique()
+        tick_positions = pd.to_datetime(dates).floor('5min').unique()
         tick_positions = sorted(tick_positions)
         if len(tick_positions) == 0:
             tick_positions = pd.to_datetime(dates).unique()
         return tick_positions, tick_format
     
     elif period == "1U":
+        # Show every 15 minutes
+        tick_format = "%H:%M"
+        tick_positions = pd.to_datetime(dates).floor('15min').unique()
+        tick_positions = sorted(tick_positions)
+        return tick_positions, tick_format
+    
+    elif period == "1M":
+        # Show every hour
+        tick_format = "%H:%M"
+        tick_positions = pd.to_datetime(dates).floor('H').unique()
+        tick_positions = sorted(tick_positions)
+        return tick_positions, tick_format
+    
+    elif period == "3M":
+        # Show every 4 hours
+        tick_format = "%d. %b %H:%M"
+        tick_positions = pd.to_datetime(dates).floor('4H').unique()
+        tick_positions = sorted(tick_positions)
+        return tick_positions, tick_format
+    
+    elif period == "6M":
         # Show every day
         tick_format = "%d. %b"
         tick_positions = pd.to_datetime(dates).floor('D').unique()
         tick_positions = sorted(tick_positions)
         return tick_positions, tick_format
     
-    elif period == "1M":
+    else:  # 1 ÅR or max
         # Show every 5 days
         tick_format = "%d. %b"
         tick_positions = pd.to_datetime(dates).floor('D').unique()
         tick_positions = sorted(tick_positions)
-        tick_positions = [t for i, t in enumerate(tick_positions) if i % 5 == 0]
-        if len(tick_positions) > 0 and tick_positions[-1] != pd.to_datetime(dates[-1]).floor('D'):
-            tick_positions.append(pd.to_datetime(dates[-1]).floor('D'))
+        all_dates = sorted(tick_positions)
+        if len(all_dates) > 1:
+            step = max(1, len(all_dates) // 15)
+            tick_positions = all_dates[::step]
+            if all_dates[-1] not in tick_positions:
+                tick_positions.append(all_dates[-1])
         return tick_positions, tick_format
-    
-    elif period == "3M":
-        # Show every 10 days
-        tick_format = "%d. %b"
-        tick_positions = pd.to_datetime(dates).floor('D').unique()
-        tick_positions = sorted(tick_positions)
-        tick_positions = [t for i, t in enumerate(tick_positions) if i % 10 == 0]
-        if len(tick_positions) > 0 and tick_positions[-1] != pd.to_datetime(dates[-1]).floor('D'):
-            tick_positions.append(pd.to_datetime(dates[-1]).floor('D'))
-        return tick_positions, tick_format
-    
-    elif period == "6M":
-        # Show every 15 days
-        tick_format = "%d. %b"
-        tick_positions = pd.to_datetime(dates).floor('D').unique()
-        tick_positions = sorted(tick_positions)
-        tick_positions = [t for i, t in enumerate(tick_positions) if i % 15 == 0]
-        if len(tick_positions) > 0 and tick_positions[-1] != pd.to_datetime(dates[-1]).floor('D'):
-            tick_positions.append(pd.to_datetime(dates[-1]).floor('D'))
-        return tick_positions, tick_format
-    
-    else:  # 1 ÅR or max
-        # Show every month
-        tick_format = "%b %Y"
-        tick_positions = pd.to_datetime(dates).to_period('M').unique()
-        tick_positions = [p.to_timestamp() for p in tick_positions]
-        return sorted(tick_positions), tick_format
 
 # Load data
 try:
@@ -291,25 +288,26 @@ if "selected_time_period" not in st.session_state:
     st.session_state.selected_time_period = "1M"
 
 # Time period configuration - in TRADING DAYS
+# Intervals are now MUCH FINER to handle intraday data properly
 time_periods = {
     "1D": {
         "trading_days": 1,
-        "intervals": ["5min", "15min", "30min"],
+        "intervals": ["1min", "3min", "5min"],
         "description": "1 trading day"
     },
     "1U": {
         "trading_days": 5,
-        "intervals": ["15min", "30min", "1H"],
+        "intervals": ["5min", "15min", "30min"],
         "description": "5 trading days"
     },
     "1M": {
         "trading_days": 20,
-        "intervals": ["1H", "4H", "1D"],
+        "intervals": ["15min", "30min", "1H"],
         "description": "20 trading days"
     },
     "3M": {
         "trading_days": 60,
-        "intervals": ["4H", "1D", "1W"],
+        "intervals": ["1H", "4H", "1D"],
         "description": "60 trading days"
     },
     "6M": {
@@ -319,7 +317,7 @@ time_periods = {
     },
     "1 ÅR": {
         "trading_days": 252,
-        "intervals": ["4H", "1D", "1W"],
+        "intervals": ["1D", "1W", "1M"],
         "description": "252 trading days"
     },
     "max": {
@@ -685,4 +683,7 @@ with st.expander("🔧 Debug Info"):
         st.write(f"period_data unique dates: {sorted(period_data['timestamp'].dt.date.unique())}")
     
     st.write("**=== AFTER RESAMPLING ===**")
+    st.write(f"selected_interval: {selected_interval}")
     st.write(f"eq_plot_filtered length: {len(eq_plot_filtered) if 'eq_plot_filtered' in locals() else 'N/A'}")
+    if 'eq_plot_filtered' in locals() and len(eq_plot_filtered) > 0:
+        st.write(f"eq_plot_filtered date range: {eq_plot_filtered['timestamp'].min()} to {eq_plot_filtered['timestamp'].max()}")
