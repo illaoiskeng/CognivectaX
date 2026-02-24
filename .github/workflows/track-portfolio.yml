@@ -1,0 +1,45 @@
+name: Track Portfolio Intraday
+
+on:
+  schedule:
+    # Run every 3 minutes during market hours (9:30 AM - 4:00 PM EST)
+    # Monday to Friday only
+    - cron: '*/3 14-20 * * 1-5'  # EST 9:30-16:00 = UTC 14:30-21:00
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Pull latest data
+        run: git pull origin main
+      
+      - name: Track portfolio
+        run: python -c "
+from dashboard_metrics import init_tracking, track_intraday
+from dashboard import load_equity, START_CAPITAL_DKK
+import pandas as pd
+
+init_tracking()
+equity = load_equity('data/papertrade/portfolio_value_daily.csv')
+current_value = float(equity.iloc[-1])
+daily_return = ((current_value / START_CAPITAL_DKK) - 1) * 100
+track_intraday(current_value, daily_return)
+print(f'Tracked: {current_value:,.0f} kr')
+        "
+      
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/portfolio_metrics.db
+          git commit -m "Track intraday portfolio value" || true
+          git push origin main
