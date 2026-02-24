@@ -47,8 +47,9 @@ def load_equity(path: str) -> pd.Series:
     eq = eq[eq.index >= pd.Timestamp(INCEPTION_DATE)]
     return eq
 
+@st.cache_data(ttl=1, show_spinner=False)
 def load_intraday_data_from_db(db_path: str, days: int = None) -> pd.DataFrame:
-    """Load intraday data from database as DataFrame"""
+    """Load intraday data from database as DataFrame - cached for 1 second to always get latest data"""
     intraday_df = get_intraday_values(db_path, days=days if days else 365)
     
     if intraday_df is None or len(intraday_df) == 0:
@@ -677,6 +678,7 @@ with st.expander("🔧 Debug Info"):
     
     st.write("**=== AFTER TIME PERIOD FILTER ===**")
     st.write(f"cutoff_time: {cutoff_time if 'cutoff_time' in locals() else 'N/A'}")
+    st.write(f"current_time: {current_time}")
     st.write(f"period_data length: {len(period_data) if 'period_data' in locals() else 'N/A'}")
     if 'period_data' in locals() and len(period_data) > 0:
         st.write(f"period_data date range: {period_data['timestamp'].min()} to {period_data['timestamp'].max()}")
