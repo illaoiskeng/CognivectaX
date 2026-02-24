@@ -199,7 +199,6 @@ if equity_dkk.empty:
 init_tracking()
 
 current_value = float(equity_dkk.iloc[-1])
-current_time = all_intraday_df['timestamp'].max() if len(all_intraday_df) > 0 else pd.Timestamp.now()
 
 # Track intraday value every 3 minutes
 daily_return_pct = ((current_value / START_CAPITAL_DKK) - 1) * 100
@@ -208,6 +207,12 @@ track_intraday(current_value, daily_return_pct)
 # Calculate daily metrics (will only save once per day at close)
 calculate_and_save_daily_metrics(weights['ticker'].tolist(), weights['weight'].tolist(), 
                                  current_value, equity_dkk)
+
+# ===== LOAD INTRADAY DATA FIRST =====
+all_intraday_df = load_intraday_data_from_db(DATA_METRICS_DB, days=365)
+
+# Use latest data timestamp, or now if no data
+current_time = all_intraday_df['timestamp'].max() if len(all_intraday_df) > 0 else pd.Timestamp.now()
 
 # ===== CALCULATE METRICS =====
 def get_return(trading_days: int) -> float:
@@ -343,8 +348,6 @@ with col_interval:
     )
 
 # ===== LOAD AND PROCESS INTRADAY DATA =====
-all_intraday_df = load_intraday_data_from_db(DATA_METRICS_DB, days=365)
-
 if len(all_intraday_df) == 0:
     st.warning("No intraday data available in database. Please check if tracking is running.")
 else:
