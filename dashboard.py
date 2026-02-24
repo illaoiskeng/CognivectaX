@@ -529,18 +529,19 @@ with col_side:
         tickers_list = weights['ticker'].tolist()
         company_names = fetch_company_names(tickers_list)
         
-        # Create pie chart with company names on hover
+        # Create pie chart with company names
         pie_data = weights.copy()
         pie_data['company_name'] = pie_data['ticker'].map(company_names)
         
         fig_pie = go.Figure()
         fig_pie.add_trace(go.Pie(
-            labels=pie_data['ticker'],
+            labels=pie_data['company_name'],
             values=pie_data['weight'],
-            hovertemplate="<b>%{customdata[0]}</b><br>Ticker: %{label}<br>Vægt: %{value:.2%}<extra></extra>",
-            customdata=np.array(pie_data['company_name']).reshape(-1, 1),
+            hovertemplate="<b>%{label}</b><br>Ticker: %{customdata}<br>Vægt: %{value:.2%}<extra></extra>",
+            customdata=pie_data['ticker'].values,
             textinfo="label+percent",
-            textposition="auto"
+            textposition="auto",
+            textfont=dict(size=12)
         ))
         
         fig_pie.update_layout(
