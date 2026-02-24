@@ -24,10 +24,6 @@ DATA_METRICS_DB = "data/portfolio_metrics.db"
 START_CAPITAL_DKK = 100_000
 INCEPTION_DATE = "2026-02-19"
 
-# Market hours definition
-MARKET_OPEN = time(9, 30)
-MARKET_CLOSE = time(16, 0)
-
 # ===== LOAD DATA =====
 @st.cache_data(ttl=5, show_spinner=False)
 def load_weights(path: str) -> pd.DataFrame:
@@ -64,27 +60,6 @@ def load_intraday_data_from_db(db_path: str, days: int = None) -> pd.DataFrame:
     
     return intraday_df
 
-def is_market_hours(timestamp: pd.Timestamp) -> bool:
-    """Check if timestamp is within US market hours (9:30 AM - 4:00 PM EST)"""
-    try:
-        # Handle both timezone-aware and timezone-naive timestamps
-        if timestamp.tz is None:
-            ts_est = timestamp.tz_localize('UTC').tz_convert('US/Eastern')
-        else:
-            ts_est = timestamp.tz_convert('US/Eastern')
-        
-        time_only = ts_est.time()
-        weekday = ts_est.weekday()
-        
-        # Weekday 0-4 = Monday-Friday
-        if weekday > 4:
-            return False
-        
-        # 9:30 AM to 4:00 PM
-        return MARKET_OPEN <= time_only <= MARKET_CLOSE
-    except Exception:
-        return False
-
 def remove_weekends(data: pd.DataFrame) -> pd.DataFrame:
     """Remove Saturday (5) and Sunday (6) data"""
     if len(data) == 0:
@@ -92,21 +67,6 @@ def remove_weekends(data: pd.DataFrame) -> pd.DataFrame:
     
     mask = data['timestamp'].dt.weekday < 5  # 0-4 = Mon-Fri
     return data[mask].copy()
-
-def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
-    """Filter data to only include US market hours (9:30 AM - 4:00 PM EST)"""
-    if len(data) == 0:
-        return data
-    
-    # Apply market hours filter
-    mask = data['timestamp'].map(is_market_hours)
-    market_data = data[mask]
-    
-    # If filtering resulted in empty data, return original
-    if len(market_data) == 0:
-        return data
-    
-    return market_data.copy()
 
 def get_trading_days_back(data: pd.DataFrame, num_trading_days: int) -> pd.Timestamp:
     """
@@ -127,7 +87,7 @@ def get_trading_days_back(data: pd.DataFrame, num_trading_days: int) -> pd.Times
     cutoff_timestamp = pd.Timestamp(cutoff_date).tz_localize(None)
     
     # Set to market open time (9:30 AM)
-    cutoff_timestamp = cutoff_timestamp.replace(hour=9, minute=30)
+    cutoff_timestamp = cutoff_timestamp.replace(hour=0, minute=0, second=0)
     
     return cutoff_timestamp
 
@@ -391,22 +351,19 @@ else:
     # Step 1: Remove weekends
     weekday_data = remove_weekends(all_intraday_df)
     
-    # Step 2: Filter to market hours FIRST
-    market_hours_data = filter_market_hours(weekday_data)
-    
-    # Step 3: Calculate cutoff based on trading days
+    # Step 2: Calculate cutoff based on trading days (no market hours filter)
     if current_config["trading_days"] is not None:
-        cutoff_time = get_trading_days_back(market_hours_data, current_config["trading_days"])
+        cutoff_time = get_trading_days_back(weekday_data, current_config["trading_days"])
     else:
-        cutoff_time = market_hours_data['timestamp'].min()
+        cutoff_time = weekday_data['timestamp'].min()
     
-    # Step 4: Filter to time period (trading days) - from cutoff to NOW
-    period_data = market_hours_data[
-        (market_hours_data['timestamp'] >= cutoff_time) & 
-        (market_hours_data['timestamp'] <= current_time)
+    # Step 3: Filter to time period (trading days) - from cutoff to NOW
+    period_data = weekday_data[
+        (weekday_data['timestamp'] >= cutoff_time) & 
+        (weekday_data['timestamp'] <= current_time)
     ].copy()
     
-    # Step 5: Resample to selected interval
+    # Step 4: Resample to selected interval
     eq_plot_resampled = resample_intraday_data(period_data, selected_interval)
     
     # Remove NaN values
@@ -716,12 +673,15 @@ with st.expander("🔧 Debug Info"):
         st.write(f"**Antal beholdinger:** {len(weights)}")
         if len(all_intraday_df) > 0:
             st.write(f"**Total intraday data points:** {len(all_intraday_df)}")
-            st.write(f"**Timezone:** {all_intraday_df['timestamp'].dt.tz}")
+            st.write(f"**Weekday data points:** {len(weekday_data) if 'weekday_data' in locals() else 'N/A'}")
             
-            st.write("**First 5 timestamps:**")
-            st.write(all_intraday_df[['timestamp', 'portfolio_value']].head())
+            weekday_unique_dates = sorted(weekday_data['timestamp'].dt.date.unique(), reverse=True) if 'weekday_data' in locals() else []
+            st.write(f"**Unique trading dates:** {weekday_unique_dates}")
             
-            st.write("**Last 5 timestamps:**")
-            st.write(all_intraday_df[['timestamp', 'portfolio_value']].tail())
+            if current_config["trading_days"] is not None:
+                st.write(f"**Requesting trading days:** {current_config['trading_days']}")
+                st.write(f"**Calculated cutoff:** {cutoff_time if 'cutoff_time' in locals() else 'N/A'}")
             
-            st.write(f"**Market hours data points:** {len(market_hours_data) if 'market_hours_data' in locals() else 'N/A'}")
+            st.write(f"**Period data points:** {len(period_data) if 'period_data' in locals() else 'N/A'}")
+            st.write(f"**Resampled data points:** {len(eq_plot_filtered) if 'eq_plot_filtered' in locals() else 'N/A'}")
+        st.write(f"**Aktuel værdi (now):** {current_value:,.0f} kr")
